@@ -1,0 +1,6 @@
+node_modules
+dist
+
+# Die Sprite-Bilder stammen aus Craftpix-Paketen und werden nicht mit dem
+# Quellcode verteilt. Siehe public/assets/LIESMICH.txt.
+public/assets/**/*.png

@@ -1,0 +1,24 @@
+Eigene Sounds
+
+1. Datei (wav, mp3 oder ogg) in diesen Ordner legen.
+2. In sounds.json eintragen, z. B.:
+
+   { "shoot": "pistole.wav", "explode": "boom.ogg" }
+
+3. Neu bauen: docker compose up -d --build
+
+Ein eingetragener Sound ersetzt den per Code erzeugten Platzhalter.
+Mögliche Namen:
+
+   shoot      Schuss (vorerst für alle Waffen)
+   dash       Dash
+   kick       Kick
+   jump       Sprung
+   slide      Slide
+   hit        Schuss trifft
+   kill       Gegner besiegt
+   hurt       Figur getroffen
+   explode    Explosion
+   pickup     Banane aufgehoben
+   roomClear  Raum geschafft
+   die        Figur zerstört

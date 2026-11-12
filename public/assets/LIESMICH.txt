@@ -1,0 +1,31 @@
+Sprite-Bilder
+
+Die Bilder in diesem Ordner sind nicht im Repository enthalten. Sie stammen aus
+kostenlosen Paketen von craftpix.net, deren Lizenz das Weitergeben der Dateien
+selbst nicht erlaubt (https://craftpix.net/file-licenses/).
+
+Ohne die Bilder läuft das Spiel trotzdem: Figur, Gegner und Explosionen werden
+dann als einfache Formen gezeichnet.
+
+Wer die Bilder hat, legt sie so ab:
+
+player/      City Man Pixel Art Character Sprite Sheets, Ordner City_men_3:
+             Idle.png Walk.png Run.png Attack.png Hurt.png Dead.png
+
+guns/        Free Guns for Cyberpunk Characters, Ordner "2 Guns":
+             2_1.png -> pistol.png    8_1.png -> shotgun.png
+             7_1.png -> rail.png      9_1.png -> grenade.png
+
+enemies/     hunter/   Free Robot Pixel Art Sprite Sheets, Swordsman:
+                       Idle Hurt Dead Attack_1
+             gunner/   dasselbe Paket, Infantryman: Idle Walk Hurt Dead Shot_1
+             shield/   dasselbe Paket, Destroyer: Idle Walk Hurt Dead
+             bomber/   Free Sci-Fi Antagonists Pixel Character Pack, Ordner 3:
+                       Idle Walk Hurt Death
+             heavy/    Free Factory Boss Enemies Asset Pack, Ordner 3:
+                       Idle Walk Hurt Death
+             boss/     dasselbe Paket, Ordner 2: Idle Drive Hurt Death
+
+fx/          explosion.png: aus Free Flame Effects Sprite Pack, flame1/png,
+             jedes zweite Bild (00, 02, ... 26) auf 64x64 verkleinert und
+             nebeneinander zu einem Streifen von 896x64 gesetzt.
