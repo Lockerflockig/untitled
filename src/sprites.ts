@@ -104,7 +104,7 @@ export function drawEnemySprite(ctx: Ctx, g: Game, e: Enemy, time: number) {
   const top = feetY - s.tall * s.scale;
   const flying = e.kicked || e.dead;
   const fusing = e.fuse !== null && !e.dead;
-  // Schaut zur Figur; der Schild-Mech dorthin, wohin sein Schild zeigt
+  // Schaut zur Figur; die Schilddrohne dorthin, wohin ihr Schild zeigt
   const facing = e.kind === 'shield' ? (Math.cos(e.angle) >= 0 ? 1 : -1) : g.x >= e.x ? 1 : -1;
 
   let clip = s.idle;
@@ -203,12 +203,14 @@ interface BlastLook {
 
 // Eigene Bilder gibt es derzeit für Mine (flacher Ausbruch am Boden),
 // Sprengdrohne (runde Druckwelle), Geschütz (Zackenblitz) und Wrack
-// (Stichflamme, die sich einrollt). Granate und Fass nutzen die Feuerwolke.
+// (Stichflamme, die sich einrollt). Granate, Fass und Schilddrohne nutzen die
+// Feuerwolke; die Schilddrohne ist blau umgefärbt.
 export const BLAST_LOOKS: Record<BlastKind, BlastLook> = {
   grenade: { filter: 'none', scale: 2.6, foot: 0.78 },
   barrel: { filter: 'hue-rotate(-25deg) saturate(1.6) brightness(0.9)', scale: 3.1, foot: 0.8 },
   mine: { filter: 'hue-rotate(160deg) saturate(1.4) brightness(1.2)', scale: 2.4, foot: 0.7, own: { scale: 2.6, foot: 0.5 } },
   bomb: { filter: 'hue-rotate(250deg) saturate(1.5)', scale: 2.8, foot: 0.75, own: { scale: 2.4, foot: 0.5 } },
+  shield: { filter: 'hue-rotate(200deg) saturate(1.2) brightness(1.2)', scale: 2.6, foot: 0.75 },
   turret: { filter: 'saturate(0.2) brightness(1.5)', scale: 2.2, foot: 0.7, own: { scale: 3, foot: 0.5 } },
   wreck: { filter: 'grayscale(0.7) brightness(0.85)', scale: 2.4, foot: 0.78, own: { scale: 3.2, foot: 0.9 } },
   revive: { filter: 'hue-rotate(120deg) saturate(1.3) brightness(1.3)', scale: 1.6, foot: 0.6 },

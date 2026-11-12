@@ -435,7 +435,7 @@ function drawBanana(ctx: Ctx, x: number, y: number, time: number) {
 
 /** Farbe der Explosion, solange es kein Bild gibt. */
 const BLAST_FALLBACK: Record<BlastKind, string> = {
-  grenade: '#ff9f43', barrel: '#ff5a36', mine: '#4dd8ff', bomb: '#c77dff',
+  grenade: '#ff9f43', barrel: '#ff5a36', mine: '#4dd8ff', bomb: '#c77dff', shield: '#6f8bff',
   turret: '#f0f0f0', wreck: '#9a9a9a', revive: '#5ce0c6',
 };
 
@@ -628,8 +628,49 @@ function drawBullet(ctx: Ctx, b: Bullet, x: number, y: number, time: number) {
 let shotOffset: [number, number] = [0, 0];
 const bulletStart = new WeakMap<Bullet, { x: number; y: number; life: number }>();
 
+/** Spuren am Boden: dunkle, unregelmäßige Brandflecken in der Größe des Sprengradius. */
+function drawMarks(ctx: Ctx, g: Game) {
+  for (const m of g.marks) {
+    // Die Form ergibt sich aus der Lage, damit ein Fleck bei jedem Bild gleich aussieht
+    const seed = m.x * 12.9898 + m.y * 78.233;
+    const noise = (i: number) => {
+      const v = Math.sin(seed + i * 91.7) * 43758.5453;
+      return v - Math.floor(v);
+    };
+    const points = 16;
+    const rim = Array.from({ length: points }, (_, i): [number, number] => {
+      const a = (i / points) * Math.PI * 2;
+      const r = m.r * (0.7 + 0.3 * noise(i));
+      return [m.x + Math.cos(a) * r, m.y + Math.sin(a) * r];
+    });
+    // weiche Kante: Kurve durch die Mitten zwischen den Randpunkten
+    const middle = (a: [number, number], b: [number, number]): [number, number] => [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+    ctx.beginPath();
+    ctx.moveTo(...middle(rim[points - 1], rim[0]));
+    for (let i = 0; i < points; i++) {
+      ctx.quadraticCurveTo(...rim[i], ...middle(rim[i], rim[(i + 1) % points]));
+    }
+    ctx.closePath();
+    const gradient = ctx.createRadialGradient(m.x, m.y, 0, m.x, m.y, m.r);
+    gradient.addColorStop(0, 'rgba(4, 3, 6, 0.8)');
+    gradient.addColorStop(0.6, 'rgba(6, 4, 8, 0.55)');
+    gradient.addColorStop(1, 'rgba(8, 6, 10, 0.25)');
+    ctx.fillStyle = gradient;
+    ctx.fill();
+    // ein paar Spritzer am Rand
+    ctx.fillStyle = 'rgba(6, 4, 8, 0.4)';
+    for (let i = 0; i < 6; i++) {
+      const a = noise(20 + i) * Math.PI * 2;
+      const d = m.r * (0.95 + 0.25 * noise(30 + i));
+      circle(ctx, m.x + Math.cos(a) * d, m.y + Math.sin(a) * d, 2 + 4 * noise(40 + i));
+      ctx.fill();
+    }
+  }
+}
+
 function drawScene(ctx: Ctx, g: Game, alpha: number, time: number) {
   drawRoom(ctx, g.room, { entry: g.room > 1, exit: g.phase !== 'play' });
+  drawMarks(ctx, g); // liegen über dem Bodenmuster und unter allem anderen
   for (const b of g.bananas) drawBanana(ctx, b.x, b.y, time);
   drawLasers(ctx, g);
   drawHazards(ctx, g, time);

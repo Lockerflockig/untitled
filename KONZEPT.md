@@ -76,7 +76,7 @@ bei der Pistole fällt sie nur auf weite Distanz ins Gewicht.
 |---|---|
 | Pistole (Standard) | einzelne Schüsse, mittlere Rate |
 | Schrot | sechs Projektile im Fächer, kurze Reichweite |
-| Schwerlaser | lädt kurz auf, dann brennt ein Strahl für einen Moment durch alle Gegner in einer Linie; hohe Abklingzeit, ein Schild-Mech von vorn hält ihn auf |
+| Schwerlaser | lädt kurz auf, dann brennt ein Strahl für einen Moment durch alle Gegner in einer Linie; hohe Abklingzeit, eine Schilddrohne von vorn hält ihn auf |
 | Granate | Flächenschaden beim Einschlag; verletzt die Figur nicht |
 
 ### Trefferpunkte und Leben **[fest]**
@@ -128,10 +128,20 @@ nur die Bewegung eingeschränkt haben **[fest]**.
 | Jagddrohne | fliegt auf die Figur zu | alles; ideal zum Kicken | 1 |
 | Geschützdrohne | hält Abstand, zielt sichtbar, schießt hoch | ducken, dann hin | 3 |
 | Sprengdrohne | schnell, zündet nahe der Figur; detoniert auch abgeschossen | wegkicken oder auf Abstand abschießen | 4 |
-| Schild-Mech | blockt Schüsse von vorn, dreht sich langsam | umlaufen, Dash, Kick, Granate | 6 |
+| Schilddrohne | blockt Schüsse von vorn, richtet den Schild langsam zur Figur aus; explodiert beim Zerstören | umlaufen, Dash, Kick, Granate; Abstand zur Explosion halten | 6 |
 | Schwerer Mech | viel Leben, viel Masse | Umgebung nutzen, Dauerfeuer | 7 |
 
 Die Namen sind Arbeitstitel. Gegner kündigen ihr Erscheinen an.
+
+**Schilddrohne:** Ihr Schild dreht sich mit fester Rate (2,2 rad/s, skaliert
+nicht mit dem Level) zur Figur; Schüsse von vorn schluckt er vorerst, später
+soll er sie reflektieren. Wird sie zerstört – egal wodurch, auch im Flug –,
+explodiert sie ohne Ankündigung: Radius 90 px, 25 Schaden in Level 1 (wächst mit
+dem Level) für Figur und Gegner, zündet Minen und Fässer, ein Wrack bleibt nicht.
+Kills durch diese Explosion zählen als Umgebung (×2). Sie hinterlässt einen
+dunklen Brandfleck am Boden, der bis zum Wechsel in den nächsten Raum liegen
+bleibt (auch nach erfüllter Aufgabe) und vorerst nur zu sehen ist. Löst sich
+der Raum auf, weil die Aufgabe erfüllt ist, explodiert keine Drohne.
 
 ### Skalierung mit dem Level **[fest]**
 
@@ -170,7 +180,7 @@ in den nächsten Raum.
 
 Raumfolge **[Vorschlag]**: Raum 1 Bananen · 2 Säubern (Fässer) · 3 Bananen
 (Geschützdrohne, Bodenfeld) · 4 Überleben (Sprengdrohne, Minen) · 5 Boss ·
-6 Geschütze (Schild-Mech) · 7 Säubern (Schwerer Mech, Zielstrahl) · 8 Bananen.
+6 Geschütze (Schilddrohne) · 7 Säubern (Schwerer Mech, Zielstrahl) · 8 Bananen.
 Danach wechseln die Aufgaben reihum, alles wird dichter. Der Run ist endlos.
 
 **Boss-Räume [Vorschlag]:** Jeder fünfte Raum. Der Boss ist ein Panzer: viel

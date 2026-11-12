@@ -4,7 +4,7 @@
 import { STEP } from '../src/sim/types.ts';
 import type { EnemyKind, Game, Input, Laser, Stats } from '../src/sim/types.ts';
 import { newGame, roomPlan, step } from '../src/sim/game.ts';
-import { makeEnemy } from '../src/sim/enemies.ts';
+import { SHIELD_BLAST_RADIUS, SHIELD_TURN, makeEnemy } from '../src/sim/enemies.ts';
 import { ENEMIES, enemyStats } from '../src/sim/core.ts';
 import { describeOffer, rollOffers, takeOffer } from '../src/sim/loot.ts';
 import {
@@ -189,7 +189,7 @@ console.log('--- Gegnertypen ---');
   const back = add(g2, 'shield', 150);
   back.angle = 0; // dreht der Figur den Rücken zu
   run(g2, 0.15, () => ({ fire: true }));
-  check('Schild-Mech blockt Schüsse von vorn, nicht von hinten', front.hp === 60 && back.hp < 60, { front: front.hp, back: back.hp });
+  check('Schilddrohne blockt Schüsse von vorn, nicht von hinten', front.hp === 60 && back.hp < 60, { front: front.hp, back: back.hp });
 }
 {
   const standing = quiet();
@@ -289,6 +289,97 @@ console.log('--- Skalierung mit dem Level ---');
     && roomPlan(5).spawnEvery === 4, [1, 4, 9, 19, 5].map((n) => [roomPlan(n).maxEnemies, roomPlan(n).spawnEvery]));
 }
 
+console.log('--- Schilddrohne ---');
+{
+  check('Der Typ heißt im Spiel Schilddrohne', ENEMIES.shield.name === 'Schilddrohne');
+  const turned = (level: number) => {
+    const g = quiet();
+    const e = makeEnemy('shield', g.x + 300, g.y, level);
+    e.angle = 0; // dreht der Figur den Rücken zu
+    g.enemies.push(e);
+    run(g, 0.5);
+    return e.angle;
+  };
+  const [one, twenty] = [turned(1), turned(20)];
+  check('Drehrate des Schilds: in Level 1 und Level 20 gleich, 2,2 rad/s',
+    Math.abs(one - twenty) < 1e-9 && Math.abs(one - SHIELD_TURN * 0.5) < 0.02, { one, twenty });
+}
+{
+  // Die Drohne steht bei (g.x + drone, g.y); sie wird zerstört, der Nachbar steht neben ihr
+  const blast = (drone: number, neighbor: number, level = 6) => {
+    const g = quiet();
+    const e = makeEnemy('shield', g.x + drone, g.y, level);
+    g.enemies.push(e);
+    const near = add(g, 'hunter', drone, neighbor);
+    e.hp = 0;
+    step(g, idle(g));
+    return { g, e, near };
+  };
+  const inside = blast(60, 80);
+  const outside = blast(130, 140);
+  check('Zerstörte Schilddrohne (Level 6) verletzt die Figur mit 33 und den Nachbarn ebenso; sie ist weg, kein Wrack',
+    inside.g.hp === 67 && inside.near.hp === 40 - 33 && !inside.g.enemies.includes(inside.e)
+    && inside.g.blasts.some((b) => b.kind === 'shield' && b.r === SHIELD_BLAST_RADIUS),
+    { hp: inside.g.hp, near: inside.near.hp });
+  check('Außerhalb von 90 px passiert nichts', outside.g.hp === 100 && outside.near.hp === 40, { hp: outside.g.hp, near: outside.near.hp });
+  const level1 = blast(60, 80, 1);
+  check('In Level 1 sind es 25', level1.g.hp === 75 && level1.near.hp === 15, { hp: level1.g.hp, near: level1.near.hp });
+}
+{
+  const g = quiet();
+  g.x = g.prevX = 650;
+  const e = add(g, 'shield', 40);
+  e.hp = 20;
+  step(g, idle(g, { kick: true }));
+  run(g, 0.4);
+  check('Stirbt sie im Flug (Aufprall an der Wand), explodiert sie dort, und das Wrack entfällt',
+    !g.enemies.includes(e) && e.dead && g.blasts.some((b) => b.kind === 'shield') && g.marks.length === 1 && g.marks[0].x > 740 && g.hp === 100,
+    { marks: g.marks, hp: g.hp });
+}
+{
+  const g = quiet();
+  const e = add(g, 'shield', 200);
+  g.barrels.push({ x: e.x + 50, y: e.y, fuse: null, action: 0 });
+  g.mines.push({ x: e.x - 50, y: e.y, fuse: null, action: 0 });
+  e.hp = 0;
+  step(g, idle(g));
+  check('Die Explosion zündet Fässer und Minen', g.barrels[0].fuse !== null && g.mines[0].fuse !== null);
+}
+{
+  const g = quiet();
+  const e = add(g, 'shield', 60);
+  e.hp = 0;
+  step(g, idle(g, { dash: true, aimX: g.x, aimY: g.y + 1000 }));
+  check('I-Frames des Dashs schützen vor der Explosion', g.hp === 100 && g.blasts.some((b) => b.kind === 'shield'), { hp: g.hp });
+}
+{
+  const g = quiet();
+  const e = add(g, 'shield', 200);
+  const victim = add(g, 'hunter', 200, 60);
+  victim.hp = 1;
+  e.hp = 0;
+  run(g, 0.1);
+  check('Kill durch die Explosion zählt als Umgebung: 200 + 100 × 2 × 1,1',
+    g.score === 200 + 220 && g.kills === 2, { score: g.score, kills: g.kills });
+}
+{
+  const g = quiet();
+  const e = add(g, 'shield', 200);
+  e.hp = 0;
+  step(g, idle(g));
+  const at = { ...g.marks[0] };
+  run(g, 60);
+  const after60 = g.marks.length;
+  g.progress = g.plan.goal;
+  step(g, idle(g));
+  const afterClear = { phase: g.phase, marks: g.marks.length };
+  takeOffer(g, 0);
+  for (let i = 0; i < 3 / STEP && g.room === 1; i++) step(g, idle(g, { moveX: 1 }));
+  check('Spur: liegt an der Stelle, bleibt 60 s und über das Ende der Aufgabe, ist im nächsten Raum weg',
+    Math.abs(at.x - (400 + 200)) < 3 && at.r === 90 && after60 === 1 && afterClear.phase === 'exit' && afterClear.marks === 1
+    && g.room === 2 && g.marks.length === 0, { at, after60, afterClear, room: g.room, marks: g.marks.length });
+}
+
 console.log('--- Gefahren ---');
 {
   const g = quiet();
@@ -361,7 +452,7 @@ console.log('--- Waffen ---');
   add(g, 'shield', 150);
   const behind = add(g, 'hunter', 250);
   run(g, 0.6, () => ({ fire: true, duck: true }));
-  check('Schwerlaser: Schild-Mech von vorn hält den Strahl auf', behind.hp === behind.maxHp && g.kills === 0, { hp: behind.hp });
+  check('Schwerlaser: Schilddrohne von vorn hält den Strahl auf', behind.hp === behind.maxHp && g.kills === 0, { hp: behind.hp });
 }
 {
   const g = quiet(baseStats({ weapons: ['rail'] }));

@@ -34,8 +34,10 @@ export const GUNNER_WINDUP = 0.4; // zielt sichtbar, bevor sie feuert
 const GUNNER_SHOT_SPEED = 380;
 const GUNNER_SHOT_DAMAGE = 12;
 
-// Schild-Mech
-const SHIELD_TURN = 2.2; // rad/s – langsam genug, um ihn zu umlaufen
+// Schilddrohne
+export const SHIELD_TURN = 2.2; // rad/s – langsam genug, um sie zu umlaufen; skaliert nicht mit dem Level
+export const SHIELD_BLAST_RADIUS = 90; // px – Explosion beim Zerstören, die Drohne kündigt sie nicht an
+const SHIELD_BLAST_DAMAGE = 25; // in Level 1, für Figur und Gegner gleich; wächst mit dem Level
 
 // Sprengdrohne
 const BOMB_TRIGGER = 70;
@@ -112,7 +114,7 @@ export function stepEnemies(g: Game) {
         case 'shield': {
           moveX = toX * e.speed;
           moveY = toY * e.speed;
-          // dreht den Schild nur langsam zur Figur
+          // richtet den Schild nur langsam zur Figur aus
           let turn = Math.atan2(dy, dx) - e.angle;
           turn = Math.atan2(Math.sin(turn), Math.cos(turn));
           e.angle += Math.max(-SHIELD_TURN * STEP, Math.min(SHIELD_TURN * STEP, turn));
@@ -309,6 +311,14 @@ export function stepEnemies(g: Game) {
     if (e.dead) return e.kicked;
     e.dead = true;
     if (!e.suicide) scoreKill(g, e);
+    if (e.kind === 'shield') {
+      // Die Schilddrohne explodiert, wo sie zerstört wird – auch im Flug, ein Wrack bleibt nicht.
+      // Die Aktion des auslösenden Kills gilt weiter (Mehrfach-Aufschlag); Opfer zählen als Umgebung.
+      const damage = scaledDamage(SHIELD_BLAST_DAMAGE, e.level);
+      explode(g, e.x, e.y, SHIELD_BLAST_RADIUS, damage, damage, 'env', e.action, 'shield');
+      g.marks.push({ x: e.x, y: e.y, r: SHIELD_BLAST_RADIUS });
+      return false;
+    }
     if (e.kind === 'bomber') {
       // Sprengdrohnen detonieren immer – auch abgeschossen oder weggekickt
       explode(

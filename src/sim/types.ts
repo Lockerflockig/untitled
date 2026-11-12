@@ -25,7 +25,7 @@ export type EnemyKind = 'hunter' | 'gunner' | 'shield' | 'bomber' | 'heavy' | 'b
 export type ObjectiveType = 'collect' | 'clear' | 'survive' | 'destroy' | 'boss';
 
 /** Woher eine Explosion stammt – bestimmt ihr Aussehen. */
-export type BlastKind = 'grenade' | 'barrel' | 'mine' | 'bomb' | 'turret' | 'wreck' | 'revive';
+export type BlastKind = 'grenade' | 'barrel' | 'mine' | 'bomb' | 'shield' | 'turret' | 'wreck' | 'revive';
 
 /** Was im Spiel gerade passiert ist – für Ton und Effekte. Die Logik sammelt, die Oberfläche spielt ab. */
 export type GameEvent =
@@ -105,7 +105,7 @@ export interface Enemy {
   cooldown: number; // Zeit bis zum nächsten Angriff (Geschützdrohne)
   windup: number; // > 0: zielt gerade und feuert gleich
   fuse: number | null; // Sprengdrohne: Zeit bis zur Detonation
-  angle: number; // Blickrichtung (Schild-Mech)
+  angle: number; // Blickrichtung (Schilddrohne)
 }
 
 /** Geschoss der Figur. */
@@ -170,6 +170,13 @@ export interface Beam {
   dy: number;
   phase: 'track' | 'lock' | 'fire';
   t: number;
+}
+
+/** Spur am Boden, etwa der Brandfleck einer Explosion. Gilt nur im Raum, in dem sie entstanden ist. */
+export interface Mark {
+  x: number;
+  y: number;
+  r: number;
 }
 
 export interface Field {
@@ -304,6 +311,7 @@ export interface Game {
   turrets: Turret[];
   shots: Shot[];
   blasts: { x: number; y: number; r: number; t: number; kind: BlastKind }[];
+  marks: Mark[]; // Spuren am Boden; bleiben bis zum Wechsel in den nächsten Raum
   bananas: { x: number; y: number }[];
 
   // Punkte

@@ -115,6 +115,7 @@ function enterRoom(g: Game, n: number) {
   g.roomHit = false;
   g.roomKills = 0;
   clearRoom(g);
+  g.marks = []; // Spuren überstehen das Ende der Aufgabe (clearRoom), nicht den Raumwechsel
   g.pickups = [];
   g.arcs = [];
   g.guard = g.stats.guard; // der Schildgenerator lädt in jedem Raum neu
@@ -157,7 +158,7 @@ export function newGame(stats: Stats, startRoom = 1): Game {
     weapon: 0, weaponCooldown: stats.weapons.map(() => 0),
     bullets: [], playerBeam: null, enemies: [], spawns: [], spawnTimer: 0,
     lasers: [], laserTimer: 0, beams: [], beamTimer: 0, fields: [], fieldTimer: 0,
-    mines: [], barrels: [], turrets: [], shots: [], blasts: [], bananas: [],
+    mines: [], barrels: [], turrets: [], shots: [], blasts: [], marks: [], bananas: [],
     score: 0, streak: 0, streakTimer: 0, actionId: 0, comboAction: 0, comboKills: 0,
     popups: [], kills: 0, roomKills: 0, time: 0, over: false, events: [],
   };
