@@ -163,7 +163,20 @@ export function stepPlayer(g: Game, input: Input) {
   if (input.swap && s.weapons.length > 1) g.weapon = (g.weapon + 1) % s.weapons.length;
   const id = s.weapons[g.weapon];
   const w = WEAPONS[id];
-  if (input.fire && !g.dashing && g.weaponCooldown[g.weapon] <= 0) {
+  if (input.fire && !g.dashing && g.weaponCooldown[g.weapon] <= 0 && w.beam) {
+    // Strahlenwaffe: Die Abklingzeit läuft ab dem Drücken, der Strahl baut sich erst auf
+    g.weaponCooldown[g.weapon] = w.cooldown;
+    g.events.push('charge');
+    g.playerBeam = {
+      charge: w.beam.charge, chargeTime: w.beam.charge,
+      fire: w.beam.duration, fireTime: w.beam.duration,
+      width: w.beam.width,
+      damage: w.damage * s.weaponDamage[id],
+      action: ++g.actionId,
+      length: 0,
+      hit: [],
+    };
+  } else if (input.fire && !g.dashing && g.weaponCooldown[g.weapon] <= 0) {
     g.weaponCooldown[g.weapon] = w.cooldown;
     g.events.push('shoot');
     // Streuung ist waffenabhängig; Ducken senkt sie
@@ -182,10 +195,8 @@ export function stepPlayer(g: Game, input: Input) {
         damage: w.damage * s.weaponDamage[id],
         // Sprenggeschosse landen dort, wo das Fadenkreuz steht (höchstens in voller Reichweite)
         life: w.blast > 0 ? Math.min(w.life, Math.max(0.05, (aimLen - PLAYER_R - 6) / speed)) : w.life,
-        pierce: w.pierce,
         blast: w.blast,
         action,
-        hit: [],
       });
     }
   }
@@ -213,7 +224,87 @@ export function stepPlayer(g: Game, input: Input) {
   }
 }
 
+const BEAM_PUSH = 260; // Rückstoß des Strahls
+
+/** Abstand entlang des Strahls (along) und quer dazu (across) von der Figur aus. */
+function beamCoords(g: Game, x: number, y: number) {
+  const dx = x - g.x;
+  const dy = y - g.y;
+  return { along: dx * g.aimX + dy * g.aimY, across: Math.abs(dx * g.aimY - dy * g.aimX) };
+}
+
+/** Länge bis zum Rand der Arena in Zielrichtung. */
+function lengthToWall(g: Game) {
+  const tx = g.aimX > 0 ? (ARENA - g.x) / g.aimX : g.aimX < 0 ? -g.x / g.aimX : Infinity;
+  const ty = g.aimY > 0 ? (ARENA - g.y) / g.aimY : g.aimY < 0 ? -g.y / g.aimY : Infinity;
+  return Math.min(tx, ty);
+}
+
+/**
+ * Schwerlaser: Während des Aufladens zeigt er nur, wohin er gleich brennt. Danach
+ * trifft er ein paar Schritte lang alles auf der Linie – jeden Gegner einmal.
+ * Ein Schild-Mech von vorn hält ihn auf.
+ */
+function stepPlayerBeam(g: Game) {
+  const pb = g.playerBeam;
+  if (!pb) return;
+  pb.length = lengthToWall(g);
+  // Der erste Schild-Mech, der in den Strahl schaut, begrenzt ihn
+  for (const e of g.enemies) {
+    if (e.kind !== 'shield' || e.dead || e.kicked) continue;
+    const { along, across } = beamCoords(g, e.x, e.y);
+    const facing = -g.aimX * Math.cos(e.angle) - g.aimY * Math.sin(e.angle) > SHIELD_BLOCK;
+    if (facing && along > 0 && along < pb.length && across < ENEMIES.shield.r + pb.width) {
+      pb.length = along - ENEMIES.shield.r;
+      if (pb.fire > 0 && pb.charge <= 0) e.hitFlash = 0.05;
+    }
+  }
+
+  if (pb.charge > 0) {
+    pb.charge -= STEP;
+    if (pb.charge <= 0) g.events.push('beam');
+    return;
+  }
+
+  const inBeam = (x: number, y: number, r: number) => {
+    const { along, across } = beamCoords(g, x, y);
+    return along > -r && along < pb.length + r && across < r + pb.width;
+  };
+  for (const e of g.enemies) {
+    if (e.dead || e.hp <= 0 || pb.hit.includes(e) || !inBeam(e.x, e.y, ENEMIES[e.kind].r)) continue;
+    pb.hit.push(e);
+    damageEnemy(e, pb.damage, 'gun', pb.action);
+    g.events.push('hit');
+    if (!e.kicked) {
+      e.pushX = (g.aimX * BEAM_PUSH) / ENEMIES[e.kind].mass;
+      e.pushY = (g.aimY * BEAM_PUSH) / ENEMIES[e.kind].mass;
+    }
+  }
+  for (const t of g.turrets) {
+    if (pb.hit.includes(t) || !inBeam(t.x, t.y, TURRET_R)) continue;
+    pb.hit.push(t);
+    t.hp -= pb.damage;
+    t.hitFlash = 0.12;
+  }
+  for (const m of g.mines) {
+    if (m.fuse === null && inBeam(m.x, m.y, MINE_R)) {
+      m.fuse = 0;
+      m.action = pb.action;
+    }
+  }
+  for (const barrel of g.barrels) {
+    if (barrel.fuse === null && inBeam(barrel.x, barrel.y, BARREL_R)) {
+      barrel.fuse = 0;
+      barrel.action = pb.action;
+    }
+  }
+
+  pb.fire -= STEP;
+  if (pb.fire <= 0) g.playerBeam = null;
+}
+
 export function stepBullets(g: Game) {
+  stepPlayerBeam(g);
   g.bullets = g.bullets.filter((b) => {
     b.x += b.vx * STEP;
     b.y += b.vy * STEP;
@@ -225,7 +316,7 @@ export function stepBullets(g: Game) {
     if (b.life <= 0 || b.x < 0 || b.x > ARENA || b.y < 0 || b.y > ARENA) return detonate();
 
     for (const e of g.enemies) {
-      if (e.dead || e.hp <= 0 || b.hit.includes(e)) continue;
+      if (e.dead || e.hp <= 0) continue;
       if (Math.hypot(e.x - b.x, e.y - b.y) >= ENEMIES[e.kind].r + BULLET_R) continue;
       const speed = Math.hypot(b.vx, b.vy);
       // Der Schild-Mech blockt, was von vorn kommt
@@ -241,8 +332,7 @@ export function stepBullets(g: Game) {
         e.pushX = ((b.vx / speed) * 170) / ENEMIES[e.kind].mass;
         e.pushY = ((b.vy / speed) * 170) / ENEMIES[e.kind].mass;
       }
-      if (!b.pierce) return false;
-      b.hit.push(e);
+      return false;
     }
     for (const t of g.turrets) {
       if (Math.hypot(t.x - b.x, t.y - b.y) < TURRET_R + BULLET_R) {

@@ -78,6 +78,7 @@ function turretSpot(): { x: number; y: number } {
 
 function clearRoom(g: Game) {
   g.bullets = [];
+  g.playerBeam = null;
   g.enemies = [];
   g.spawns = [];
   g.lasers = [];
@@ -132,7 +133,7 @@ export function newGame(stats: Stats, startRoom = 1): Game {
     dashes: stats.dashCharges, dashRecharge: 0, dashTime: 0, dashing: false, dashX: 1, dashY: 0, invuln: 0,
     kickCooldown: 0, kickFlash: 0,
     weapon: 0, weaponCooldown: stats.weapons.map(() => 0),
-    bullets: [], enemies: [], spawns: [], spawnTimer: 0,
+    bullets: [], playerBeam: null, enemies: [], spawns: [], spawnTimer: 0,
     lasers: [], laserTimer: 0, beams: [], beamTimer: 0, fields: [], fieldTimer: 0,
     mines: [], barrels: [], turrets: [], shots: [], blasts: [], bananas: [],
     score: 0, streak: 0, streakTimer: 0, actionId: 0, comboAction: 0, comboKills: 0,
@@ -189,6 +190,7 @@ export function step(g: Game, input: Input) {
       g.dashTime = 0;
       g.dashing = false;
       g.bullets = [];
+      g.playerBeam = null;
     }
     return;
   }

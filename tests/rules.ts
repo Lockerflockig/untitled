@@ -275,7 +275,24 @@ console.log('--- Waffen ---');
   add(g, 'hunter', 150);
   add(g, 'hunter', 220);
   run(g, 0.3, () => ({ fire: true, duck: true }));
-  check('Durchschuss: tötet zwei in einer Linie, zweiter mit Aufschlag', g.kills === 2 && g.score === 100 + 165, { kills: g.kills, score: g.score });
+  const whileCharging = g.kills;
+  run(g, 0.3, () => ({ fire: true, duck: true }));
+  check('Schwerlaser: lädt erst auf, tötet dann zwei in einer Linie, zweiter mit Aufschlag',
+    whileCharging === 0 && g.kills === 2 && g.score === 100 + 165 && g.playerBeam === null && g.bullets.length === 0,
+    { whileCharging, kills: g.kills, score: g.score });
+}
+{
+  const g = quiet(baseStats({ weapons: ['rail'] }));
+  add(g, 'shield', 150);
+  const behind = add(g, 'hunter', 250);
+  run(g, 0.6, () => ({ fire: true, duck: true }));
+  check('Schwerlaser: Schild-Mech von vorn hält den Strahl auf', behind.hp === behind.maxHp && g.kills === 0, { hp: behind.hp });
+}
+{
+  const g = quiet(baseStats({ weapons: ['rail'] }));
+  const e = add(g, 'heavy', 200);
+  run(g, 0.6, () => ({ fire: true, duck: true }));
+  check('Schwerlaser: trifft jeden Gegner nur einmal je Strahl', e.maxHp - e.hp === 60, { damage: e.maxHp - e.hp });
 }
 {
   const g = quiet(baseStats({ weapons: ['grenade'] }));

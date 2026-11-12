@@ -433,6 +433,59 @@ function drawBanana(ctx: Ctx, x: number, y: number, time: number) {
   ctx.restore();
 }
 
+const PLAYER_BEAM_COLOR = '#b6ff6a';
+
+/** Schwerlaser: erst eine feine Ziellinie und ein wachsender Ladepunkt, dann der Strahl. */
+function drawPlayerBeam(ctx: Ctx, g: Game, time: number) {
+  const pb = g.playerBeam;
+  if (!pb) return;
+  const ox = g.x + g.aimX * (BASE_R + 6);
+  const oy = g.y + g.aimY * (BASE_R + 6);
+  const ex = g.x + g.aimX * pb.length;
+  const ey = g.y + g.aimY * pb.length;
+  ctx.save();
+  ctx.lineCap = 'round';
+  if (pb.charge > 0) {
+    const p = 1 - pb.charge / pb.chargeTime; // 0 → 1 beim Aufladen
+    ctx.beginPath();
+    ctx.moveTo(ox, oy);
+    ctx.lineTo(ex, ey);
+    ctx.strokeStyle = PLAYER_BEAM_COLOR;
+    ctx.globalAlpha = 0.15 + 0.45 * p;
+    ctx.lineWidth = 1 + 2 * p;
+    ctx.setLineDash([10, 8]);
+    ctx.lineDashOffset = -time * 200;
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.globalAlpha = 1;
+    ctx.shadowColor = PLAYER_BEAM_COLOR;
+    ctx.shadowBlur = 8 + 16 * p;
+    circle(ctx, ox, oy, 3 + 7 * p + Math.sin(time * 60) * p);
+    ctx.fillStyle = p > 0.8 ? '#ffffff' : PLAYER_BEAM_COLOR;
+    ctx.fill();
+  } else {
+    // Volle Breite am Anfang, zum Ende hin dünner und blasser
+    const p = Math.max(0, pb.fire / pb.fireTime);
+    const width = pb.width * 2 * (0.4 + 0.6 * p);
+    ctx.shadowColor = PLAYER_BEAM_COLOR;
+    ctx.shadowBlur = 30;
+    ctx.beginPath();
+    ctx.moveTo(ox, oy);
+    ctx.lineTo(ex, ey);
+    ctx.strokeStyle = PLAYER_BEAM_COLOR;
+    ctx.globalAlpha = 0.5 + 0.5 * p;
+    ctx.lineWidth = width;
+    ctx.stroke();
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = width * 0.4;
+    ctx.stroke();
+    circle(ctx, ex, ey, width * 0.7);
+    ctx.fillStyle = '#ffffff';
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
 function drawPlayer(ctx: Ctx, g: Game, x: number, groundY: number, time: number) {
   const height = jumpHeight(g);
   // Platzhalter für die Ebenen: geduckt kleiner, im Sprung größer und über einem Schatten
@@ -517,10 +570,11 @@ function drawScene(ctx: Ctx, g: Game, alpha: number, time: number) {
   for (const e of [...g.enemies].sort((a, b) => a.y - b.y)) drawEnemy(ctx, g, e, time);
 
   for (const b of g.bullets) {
-    circle(ctx, b.x, b.y, b.blast > 0 ? 7 : b.pierce ? 5 : BULLET_R);
-    ctx.fillStyle = b.blast > 0 ? '#ff9f43' : b.pierce ? '#9be7ff' : '#fff3c4';
+    circle(ctx, b.x, b.y, b.blast > 0 ? 7 : BULLET_R);
+    ctx.fillStyle = b.blast > 0 ? '#ff9f43' : '#fff3c4';
     ctx.fill();
   }
+  drawPlayerBeam(ctx, g, time);
 
   // Explosionen: Der Ring zeigt kurz den Wirkradius, darüber läuft die Sprite-Animation
   for (const b of g.blasts) {

@@ -16,8 +16,9 @@ export interface WeaponDef {
   damage: number; // je Projektil
   speed: number;
   life: number; // Flugdauer
-  pierce: boolean;
   blast: number; // Explosionsradius
+  // Strahlenwaffe statt Projektil: Ladezeit, Brenndauer, halbe Breite (s, s, px)
+  beam?: { charge: number; duration: number; width: number };
   multi: boolean; // kann mit einem Schuss mehrere treffen → zählt als Aktion für den Mehrfach-Aufschlag
 }
 
@@ -25,22 +26,23 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
   pistol: {
     name: 'Pistole', desc: 'Einzelschüsse, mittlere Rate', cost: 0,
     cooldown: 0.3, spread: 0.03, duckSpread: 0, pellets: 1, damage: 20, speed: 900, life: 2,
-    pierce: false, blast: 0, multi: false,
+    blast: 0, multi: false,
   },
   shotgun: {
     name: 'Schrot', desc: 'Fächer, stark auf kurze Distanz', cost: 800,
     cooldown: 0.8, spread: 0.24, duckSpread: 0.6, pellets: 6, damage: 9, speed: 800, life: 0.4,
-    pierce: false, blast: 0, multi: true,
+    blast: 0, multi: true,
   },
   rail: {
-    name: 'Durchschuss', desc: 'Langsam, durchschlägt alle in einer Linie', cost: 1200,
-    cooldown: 1.1, spread: 0.01, duckSpread: 0, pellets: 1, damage: 45, speed: 1800, life: 2,
-    pierce: true, blast: 0, multi: true,
+    name: 'Schwerlaser', desc: 'Lädt auf, dann brennt ein Strahl durch alle in einer Linie', cost: 1200,
+    cooldown: 1.6, spread: 0, duckSpread: 0, pellets: 1, damage: 60, speed: 0, life: 0,
+    blast: 0, multi: true,
+    beam: { charge: 0.35, duration: 0.12, width: 9 },
   },
   grenade: {
     name: 'Granate', desc: 'Landet am Fadenkreuz, Flächenschaden', cost: 1500,
     cooldown: 1.2, spread: 0.04, duckSpread: 0.3, pellets: 1, damage: 50, speed: 520, life: 1.3,
-    pierce: false, blast: 90, multi: true,
+    blast: 90, multi: true,
   },
 };
 
