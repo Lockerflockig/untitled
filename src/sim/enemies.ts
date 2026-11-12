@@ -27,6 +27,20 @@ function impactBlast(g: Game, e: Enemy) {
   if (g.stats.kickBlast > 0) explode(g, e.x, e.y, g.stats.kickBlast, g.stats.kickBlastDamage, 0, 'env', e.action, 'bomb');
 }
 
+// Nahkampf-Angriff. Jede Drohne mit Eintrag in MELEE verletzt nicht durch Berührung, sondern
+// holt aus, schlägt in einen Bogen vor sich und erholt sich. Die Werte skalieren nicht mit
+// dem Level; der Schaden kommt aus e.damage. Weitere Nahkämpfer tragen hier ihre Werte ein.
+export interface MeleeDef {
+  windup: number; // s – sie bleibt stehen und zeigt die Angriffsanimation; die Richtung steht zu Beginn fest
+  recover: number; // s – nach dem Schlag steht sie und kann nicht angreifen
+  reach: number; // px ab Rand der Drohne; zusätzlich zählt der Körper der Figur
+  arc: number; // rad – halber Öffnungswinkel des Schlags
+}
+export const MELEE: Partial<Record<EnemyKind, MeleeDef>> = {
+  hunter: { windup: 0.35, recover: 0.5, reach: 50, arc: Math.PI / 3 },
+};
+const MELEE_INTERRUPT = 60; // px/s – ein Rückstoß darüber (Kick, Treffer, Dash, Explosion) bricht das Ausholen ab
+
 // Geschützdrohne
 const GUNNER_RANGE: [number, number] = [260, 340]; // hält diesen Abstand
 const GUNNER_COOLDOWN = 1.1;
@@ -72,7 +86,7 @@ export function makeEnemy(kind: EnemyKind, x: number, y: number, level = 1): Ene
     kind, level, x, y, hp: stats.hp, maxHp: stats.hp, speed: stats.speed, damage: stats.damage, mode: 0,
     pushX: 0, pushY: 0, kicked: false, dead: false, suicide: false,
     lastHit: 'gun', action: 0, hitFlash: 0, dashHit: false, slideHit: false, laserCooldown: 0,
-    cooldown: GUNNER_COOLDOWN, windup: 0, fuse: null, angle: 0,
+    cooldown: GUNNER_COOLDOWN, windup: 0, melee: null, fuse: null, angle: 0,
   };
 }
 
@@ -109,6 +123,45 @@ export function alarmsOf(g: Game): Alarm[] {
   return alarms;
 }
 
+/** Trifft der Schlag aus Richtung angle die Figur? Reichweite wie beim Kick: ab Rand der Drohne, Körper der Figur zählt. */
+function strikeHits(g: Game, e: Enemy, def: MeleeDef, angle: number) {
+  const dx = g.x - e.x;
+  const dy = g.y - e.y;
+  if (Math.hypot(dx, dy) >= ENEMIES[e.kind].r + def.reach + PLAYER_R) return false;
+  const off = Math.atan2(dy, dx) - angle;
+  return Math.abs(Math.atan2(Math.sin(off), Math.cos(off))) <= def.arc;
+}
+
+/**
+ * Nahkampf-Angriff eines Gegners für einen Schritt. Gibt zurück, ob er dabei stehen
+ * bleibt (Ausholen und Erholen).
+ */
+function stepMelee(g: Game, e: Enemy, def: MeleeDef, dx: number, dy: number, dist: number): boolean {
+  const pushed = Math.hypot(e.pushX, e.pushY) >= MELEE_INTERRUPT;
+  if (e.melee === null) {
+    // Sie holt aus, sobald die Figur in Reichweite des Schlags ist – nicht, solange sie zurückgeworfen wird
+    if (pushed || dist >= ENEMIES[e.kind].r + def.reach + PLAYER_R) return false;
+    e.melee = { phase: 'windup', t: def.windup, angle: Math.atan2(dy, dx) };
+    return true;
+  }
+  const m = e.melee;
+  if (m.phase === 'windup' && pushed) {
+    e.melee = null; // ein Rückstoß wirft das Ausholen ab
+    return false;
+  }
+  m.t -= STEP;
+  if (m.t > 0) return true;
+  if (m.phase === 'windup') {
+    // Schlag: trifft, wer im Bogen steht. I-Frames des Dashs und die Schonzeit schützen wie sonst.
+    if (!g.dashing && strikeHits(g, e, def, m.angle)) hurtPlayer(g, e.damage);
+    m.phase = 'recover';
+    m.t = def.recover;
+  } else {
+    e.melee = null;
+  }
+  return true;
+}
+
 export function stepEnemies(g: Game) {
   for (const e of g.enemies) {
     const def = ENEMIES[e.kind];
@@ -123,9 +176,18 @@ export function stepEnemies(g: Game) {
     // Verhalten – gekickte Gegner und Wracks fliegen nur
     let moveX = 0;
     let moveY = 0;
+    const melee = MELEE[e.kind];
+    // Nahkämpfer: Während des Angriffs steht er; gekickt oder tot greift er nicht an
+    const attacking = melee !== undefined && !e.kicked && !e.dead && stepMelee(g, e, melee, dx, dy, dist);
+    if (e.kicked || e.dead) e.melee = null;
     if (!e.kicked && !e.dead) {
       switch (e.kind) {
         case 'hunter':
+          if (!attacking) {
+            moveX = toX * e.speed;
+            moveY = toY * e.speed;
+          }
+          break;
         case 'heavy':
           moveX = toX * e.speed;
           moveY = toY * e.speed;
@@ -245,7 +307,7 @@ export function stepEnemies(g: Game) {
           e.pushY = (-toY * KNOCKBACK) / def.mass;
         }
       }
-    } else if (!g.dashing && !e.kicked && e.damage > 0 && dist < PLAYER_R + def.r) {
+    } else if (!g.dashing && !e.kicked && e.damage > 0 && !melee && dist < PLAYER_R + def.r) {
       if (hurtPlayer(g, e.damage)) {
         e.pushX = (-toX * KNOCKBACK) / def.mass;
         e.pushY = (-toY * KNOCKBACK) / def.mass;

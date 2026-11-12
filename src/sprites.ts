@@ -4,7 +4,7 @@
 
 import type { BlastKind, Enemy, EnemyKind, Game } from './sim/types.ts';
 import { ENEMIES } from './sim/core.ts';
-import { BOMB_FUSE, BOMB_RADIUS, BOSS_WINDUP, GUNNER_WINDUP } from './sim/enemies.ts';
+import { BOMB_FUSE, BOMB_RADIUS, BOSS_WINDUP, GUNNER_WINDUP, MELEE } from './sim/enemies.ts';
 
 type Ctx = CanvasRenderingContext2D;
 interface Clip { file: string; frames: number; fps: number }
@@ -45,6 +45,7 @@ const ENEMY_SPRITES: Record<EnemyKind, EnemySprite> = {
     move: { file: 'Idle', frames: 5, fps: 12 }, // das Paket hat für ihn keine Lauf-Animation
     hurt: { file: 'Hurt', frames: 3, fps: 10 },
     dead: { file: 'Dead', frames: 4, fps: 8 },
+    attack: { file: 'Attack_1', frames: 4, fps: 12 }, // läuft über die Dauer des Ausholens (MELEE.hunter.windup)
   },
   gunner: {
     size: 128, originX: 63, tall: 72, scale: 0.85, hover: false,
@@ -104,8 +105,10 @@ export function drawEnemySprite(ctx: Ctx, g: Game, e: Enemy, time: number) {
   const top = feetY - s.tall * s.scale;
   const flying = e.kicked || e.dead;
   const fusing = e.fuse !== null && !e.dead;
-  // Schaut zur Figur; die Schilddrohne dorthin, wohin ihr Schild zeigt
-  const facing = e.kind === 'shield' ? (Math.cos(e.angle) >= 0 ? 1 : -1) : g.x >= e.x ? 1 : -1;
+  // Schaut zur Figur; die Schilddrohne dorthin, wohin ihr Schild zeigt, ein Nahkämpfer beim Angriff dorthin, wohin er schlägt
+  const facing = e.melee
+    ? (Math.cos(e.melee.angle) >= 0 ? 1 : -1)
+    : e.kind === 'shield' ? (Math.cos(e.angle) >= 0 ? 1 : -1) : g.x >= e.x ? 1 : -1;
 
   let clip = s.idle;
   let frame = -1;
@@ -120,6 +123,18 @@ export function drawEnemySprite(ctx: Ctx, g: Game, e: Enemy, time: number) {
   } else if (s.attack && e.windup > 0) {
     clip = s.attack;
     frame = Math.min(s.attack.frames - 1, Math.floor((1 - e.windup / GUNNER_WINDUP) * s.attack.frames));
+  } else if (s.attack && e.melee && MELEE[e.kind]) {
+    // Nahkampf: Die Bilder laufen über das Ausholen; im Moment des Schlags bleibt kurz das letzte stehen, in der Erholung die Ruhe
+    const def = MELEE[e.kind]!;
+    if (e.melee.phase === 'windup') {
+      clip = s.attack;
+      frame = Math.min(s.attack.frames - 1, Math.floor((1 - e.melee.t / def.windup) * s.attack.frames));
+    } else if (e.melee.t > def.recover - 0.15) {
+      clip = s.attack;
+      frame = s.attack.frames - 1;
+    } else {
+      clip = s.idle;
+    }
   } else if (!fusing) {
     clip = s.move;
   }

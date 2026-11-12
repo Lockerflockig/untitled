@@ -125,13 +125,27 @@ nur die Bewegung eingeschränkt haben **[fest]**.
 
 | Gegner **[Vorschlag]** | Verhalten | Konter | ab Raum |
 |---|---|---|---|
-| Jagddrohne | fliegt auf die Figur zu | alles; ideal zum Kicken | 1 |
+| Jagddrohne | fliegt auf die Figur zu und schlägt mit Angriffsanimation (kein Berührungsschaden) | aus dem Bogen laufen, Dash; Kick oder Treffer unterbrechen; ideal zum Kicken | 1 |
 | Geschützdrohne | hält Abstand, zielt sichtbar, schießt hoch | ducken, dann hin | 3 |
 | Sprengdrohne | läuft mit dem 1,5-fachen Tempo der Figur zu, zündet nahe der Figur, Warnton; explodiert nur durch ihre Lunte | rechtzeitig abschießen oder wegkicken (dann keine Explosion) | 4 |
 | Schilddrohne | blockt Schüsse von vorn, richtet den Schild langsam zur Figur aus; explodiert beim Zerstören | umlaufen, Dash, Kick, Granate; Abstand zur Explosion halten | 6 |
 | Schwerer Mech | viel Leben, viel Masse | Umgebung nutzen, Dauerfeuer | 7 |
 
 Die Namen sind Arbeitstitel. Gegner kündigen ihr Erscheinen an.
+
+**Jagddrohne:** Sie verletzt nicht mehr durch Berührung. Sobald die Figur in
+Reichweite ist (50 px ab Rand der Drohne, der Körper der Figur zählt), bleibt
+sie stehen und holt 0,35 s aus; die Richtung steht zu Beginn fest, und am Boden
+ist der Bogen angedeutet (halber Öffnungswinkel 60°). Danach schlägt sie einmal:
+Wer im Bogen steht, nimmt Schaden (alle Höhen; I-Frames und Schonzeit schützen
+wie sonst). Dann steht sie 0,5 s und kann nicht angreifen. Wer während des
+Ausholens aus dem Bogen läuft, dasht oder die Drohne wegkickt, wird nicht
+getroffen; ein Kick oder jeder Treffer mit Rückstoß bricht das Ausholen ab.
+Gekickte Drohnen greifen nicht an. Dauer, Reichweite und Winkel skalieren nicht
+mit dem Level, Leben, Schaden und Tempo (höchstens 250 px/s) schon. Der Angriff
+ist als Baustein gebaut (`MELEE` in `src/sim/enemies.ts`), damit Schilddrohne
+und Schwerer Mech ihn später mit eigenen Werten übernehmen können; bis dahin
+verletzen sie noch durch Berührung.
 
 **Schilddrohne:** Ihr Schild dreht sich mit fester Rate (2,2 rad/s, skaliert
 nicht mit dem Level) zur Figur; Schüsse von vorn schluckt er vorerst, später

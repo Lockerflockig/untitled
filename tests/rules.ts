@@ -171,7 +171,7 @@ console.log('--- Punkte ---');
   g.streak = 5;
   g.streakTimer = 4;
   add(g, 'hunter', 20);
-  run(g, 0.05);
+  run(g, 0.5); // Ausholen 0,35 s, dann der Schlag
   check('Treffer setzt die Serie zurück', g.streak === 0 && g.hp === 85, { streak: g.streak, hp: g.hp });
 }
 {
@@ -499,6 +499,97 @@ console.log('--- Warnton der Sprengdrohne ---');
     c0 === 1 && c1 === 0 && c2 === 0 && c3 === 1, { c0, c1, c2, c3 });
 }
 
+console.log('--- Jagddrohne: Nahkampf ---');
+{
+  const g = quiet();
+  const e = add(g, 'hunter', 30);
+  run(g, 0.05);
+  const x = e.x;
+  run(g, 0.15);
+  const whileWinding = { hp: g.hp, phase: e.melee?.phase, still: e.x === x };
+  run(g, 0.25);
+  check('Berührung verletzt nicht sofort: erst nach dem Ausholen (0,35 s), dann 15 Schaden; beim Ausholen steht sie still',
+    whileWinding.hp === 100 && whileWinding.phase === 'windup' && whileWinding.still && g.hp === 85 && e.melee?.phase === 'recover',
+    { whileWinding, hp: g.hp });
+}
+{
+  const g = quiet();
+  add(g, 'hunter', 40);
+  run(g, 0.45, () => ({ moveX: -1 }));
+  check('Läuft die Figur beim Ausholen aus der Reichweite, bleibt sie unverletzt', g.hp === 100, { hp: g.hp });
+}
+{
+  const g = quiet();
+  const e = add(g, 'hunter', 40);
+  run(g, 0.1);
+  g.x = g.prevX = e.x + 40; // steht nun hinter der Drohne: in Reichweite, aber nicht im Bogen
+  run(g, 0.4);
+  check('Steht die Figur beim Schlag außerhalb des Bogens (halber Winkel 60°), bleibt sie unverletzt', g.hp === 100, { hp: g.hp });
+}
+{
+  const g = quiet();
+  const e = add(g, 'hunter', 40);
+  run(g, 0.1);
+  const winding = e.melee?.phase === 'windup';
+  step(g, idle(g, { kick: true }));
+  const aborted = e.melee === null && e.kicked;
+  run(g, 0.7);
+  check('Ein Kick beim Ausholen bricht den Angriff ab', winding && aborted && g.hp === 100, { winding, aborted, hp: g.hp });
+}
+{
+  const g = quiet();
+  const e = add(g, 'hunter', 40);
+  run(g, 0.1);
+  step(g, idle(g, { fire: true }));
+  step(g, idle(g));
+  const aborted = e.melee === null;
+  run(g, 0.3); // ohne Abbruch käme der Schlag 0,25 s nach dem Schuss
+  check('Ein Treffer mit Rückstoß bricht das Ausholen ab', aborted && g.hp === 100, { aborted, hp: g.hp });
+}
+{
+  const g = quiet();
+  const e = add(g, 'hunter', 40);
+  run(g, 0.1);
+  step(g, idle(g, { dash: true }));
+  run(g, 0.35);
+  check('Ein Dash durch die Drohne beim Ausholen schützt die Figur', e.hp < e.maxHp && g.hp === 100, { hunter: e.hp, hp: g.hp });
+}
+{
+  const g = quiet();
+  const e = add(g, 'hunter', 30);
+  let t = 0;
+  while (g.hp === 100 && t < 1) {
+    step(g, idle(g));
+    t += STEP;
+  }
+  const struck = { hp: g.hp, phase: e.melee?.phase };
+  run(g, 0.45);
+  const recovering = e.melee?.phase === 'recover';
+  run(g, 0.1);
+  const windingAgain = e.melee?.phase === 'windup';
+  run(g, 0.2); // noch kein zweiter Schlag: 0,5 s Erholen + 0,35 s Ausholen
+  const hpBetween = g.hp;
+  run(g, 0.2);
+  check('Nach dem Schlag vergeht die Erholzeit (0,5 s), dann holt sie neu aus; der zweite Schlag kommt erst 0,85 s nach dem ersten',
+    struck.hp === 85 && struck.phase === 'recover' && recovering && windingAgain && hpBetween === 85 && g.hp === 70,
+    { struck, recovering, windingAgain, hpBetween, hp: g.hp });
+}
+{
+  const g = quiet();
+  g.enemies.push(makeEnemy('hunter', g.x + 30, g.y, 6));
+  run(g, 0.5);
+  check('Jagddrohne aus Level 6: Schlag mit skaliertem Schaden (20), Leben 64', g.hp === 80 && g.enemies[0].maxHp === 64, { hp: g.hp });
+  const speeds = Array.from({ length: 200 }, (_, i) => enemyStats('hunter', i + 1).speed);
+  check('Tempo der Jagddrohne überschreitet in keinem Level 250', Math.max(...speeds) === 250);
+}
+{
+  const g = quiet();
+  const heavy = makeEnemy('heavy', g.x + 20, g.y);
+  g.enemies.push(heavy);
+  run(g, 0.05);
+  check('Der Schwere Mech verletzt weiter durch Berührung (noch ohne Angriffsanimation)', g.hp === 70 && heavy.melee === null, { hp: g.hp });
+}
+
 console.log('--- Gefahren ---');
 {
   const g = quiet();
@@ -700,7 +791,7 @@ console.log('--- Loot ---');
   check('Bei vollen Modul-Plätzen kommen keine neuen Module, nur Stufen',
     offers.every((o) => o.kind === 'weapon' || g.modules.some((m) => m.id === o.id)) && offers.length === 120);
   add(g, 'hunter', 20);
-  run(g, 0.05);
+  run(g, 0.5);
   check('Panzerung Stufe 2: 15 Schaden werden zu 11', g.hp === 100 - 11, { hp: g.hp });
 }
 {
@@ -805,9 +896,9 @@ console.log('--- Neue Module ---');
     g.streak = 3;
     g.streakTimer = 4;
     add(g, 'hunter', 20);
-    run(g, 0.05);
+    run(g, 0.5); // erster Schlag nach 0,35 s
     const first = { hp: g.hp, streak: g.streak };
-    run(g, 0.7);
+    run(g, 0.9); // Erholen 0,5 s, Ausholen 0,35 s, zweiter Schlag
     check('Schildgenerator: fängt den ersten Treffer ab, der zweite sitzt', first.hp === 100 && first.streak === 3 && g.hp === 85, { first, hp: g.hp });
   }
   {

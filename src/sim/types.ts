@@ -90,6 +90,13 @@ export interface Input {
   swap: boolean; // Waffe wechseln
 }
 
+/** Nahkampf-Angriff eines Gegners: erst Ausholen, dann der Schlag, dann Erholen. */
+export interface Melee {
+  phase: 'windup' | 'recover';
+  t: number; // verbleibende Zeit der Phase
+  angle: number; // Richtung des Schlags, zu Beginn des Ausholens festgelegt
+}
+
 export interface Enemy {
   kind: EnemyKind;
   level: number; // Level (Raumnummer), in dem er erschienen ist; bestimmt die Werte seiner Angriffe
@@ -113,6 +120,7 @@ export interface Enemy {
   laserCooldown: number;
   cooldown: number; // Zeit bis zum nächsten Angriff (Geschützdrohne)
   windup: number; // > 0: zielt gerade und feuert gleich
+  melee: Melee | null; // Nahkampf-Angriff, solange er läuft (Jagddrohne)
   fuse: number | null; // Sprengdrohne: Zeit bis zur Detonation
   angle: number; // Blickrichtung (Schilddrohne)
 }

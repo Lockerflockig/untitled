@@ -8,7 +8,7 @@ import {
   BANANA_R, BARREL_R, BLAST_TIME, ENEMIES, MINE_R, PLAYER_R as BASE_R, TURRET_R, jumpHeight,
 } from './sim/core.ts';
 import { BULLET_R, KICK_ARC, KICK_REACH } from './sim/player.ts';
-import { BOMB_FUSE, BOMB_RADIUS, GUNNER_WINDUP, SPAWN_WARN } from './sim/enemies.ts';
+import { BOMB_FUSE, BOMB_RADIUS, GUNNER_WINDUP, MELEE, SPAWN_WARN } from './sim/enemies.ts';
 import { BEAM_LOCK, FIELD_WARN, LASER_WARN, SHOT_R, TURRET_HP } from './sim/hazards.ts';
 import { ENTRY_X, EXIT_HALF, EXIT_Y, RUN_OUT_TIME, SLIDE_TIME } from './sim/game.ts';
 import { drawEnemySprite, drawExplosionSprite, enemySpriteReady } from './sprites.ts';
@@ -340,8 +340,32 @@ function drawHazards(ctx: Ctx, g: Game, time: number) {
   }
 }
 
+/**
+ * Der Bogen, den der Schlag eines Nahkämpfers trifft, am Boden angedeutet (wie der Kick der
+ * Figur): Er füllt sich beim Ausholen und blitzt im Moment des Schlags weiß auf.
+ */
+function drawMeleeArc(ctx: Ctx, e: Enemy) {
+  const def = MELEE[e.kind];
+  const m = e.melee;
+  if (!def || !m) return;
+  const strike = m.phase === 'recover' && m.t > def.recover - 0.1;
+  if (m.phase === 'recover' && !strike) return;
+  const progress = m.phase === 'windup' ? 1 - m.t / def.windup : 1;
+  const radius = ENEMIES[e.kind].r + def.reach + BASE_R;
+  ctx.beginPath();
+  ctx.moveTo(e.x, e.y);
+  ctx.arc(e.x, e.y, radius, m.angle - def.arc, m.angle + def.arc);
+  ctx.closePath();
+  ctx.fillStyle = strike ? 'rgba(255, 255, 255, 0.55)' : `rgba(255, 93, 115, ${0.08 + 0.32 * progress})`;
+  ctx.fill();
+  ctx.strokeStyle = `rgba(255, 93, 115, ${0.4 + 0.5 * progress})`;
+  ctx.lineWidth = 2;
+  ctx.stroke();
+}
+
 function drawEnemy(ctx: Ctx, g: Game, e: Enemy, time: number) {
   const def = ENEMIES[e.kind];
+  drawMeleeArc(ctx, e); // liegt am Boden, unter der Figur der Drohne
   if (enemySpriteReady(e.kind)) {
     drawEnemySprite(ctx, g, e, time);
     return;
