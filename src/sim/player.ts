@@ -24,7 +24,7 @@ export const KICK_ARC = 0.96; // halber Öffnungswinkel in rad (55°)
 const KICK_DAMAGE = 5;
 
 export const BULLET_R = 4;
-const SHIELD_BLOCK = Math.cos(1.2); // Schild-Mech blockt Schüsse aus ±70° von vorn
+const SHIELD_BLOCK = Math.cos(1.2); // Schilddrohne blockt Schüsse aus ±70° von vorn
 const GRENADE_PLAYER_DAMAGE = 0; // die eigene Granate verletzt die Figur nicht
 
 /**
@@ -274,13 +274,13 @@ function lengthToWall(g: Game) {
 /**
  * Schwerlaser: Während des Aufladens zeigt er nur, wohin er gleich brennt. Danach
  * trifft er ein paar Schritte lang alles auf der Linie – jeden Gegner einmal.
- * Ein Schild-Mech von vorn hält ihn auf.
+ * Eine Schilddrohne von vorn hält ihn auf.
  */
 function stepPlayerBeam(g: Game) {
   const pb = g.playerBeam;
   if (!pb) return;
   pb.length = lengthToWall(g);
-  // Der erste Schild-Mech, der in den Strahl schaut, begrenzt ihn
+  // Die erste Schilddrohne, die in den Strahl schaut, begrenzt ihn
   for (const e of g.enemies) {
     if (e.kind !== 'shield' || e.dead || e.kicked) continue;
     const { along, across } = beamCoords(g, e.x, e.y);
@@ -386,7 +386,7 @@ export function stepBullets(g: Game) {
       if (e.dead || e.hp <= 0 || b.hit.includes(e)) continue;
       if (Math.hypot(e.x - b.x, e.y - b.y) >= ENEMIES[e.kind].r + BULLET_R + b.hitR) continue;
       const speed = Math.hypot(b.vx, b.vy);
-      // Der Schild-Mech blockt, was von vorn kommt
+      // Die Schilddrohne blockt, was von vorn kommt
       const fromFront = -(b.vx / speed) * Math.cos(e.angle) - (b.vy / speed) * Math.sin(e.angle) > SHIELD_BLOCK;
       if (e.kind === 'shield' && fromFront && !e.kicked) {
         e.hitFlash = 0.05;

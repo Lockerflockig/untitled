@@ -4,7 +4,10 @@
 import { STEP } from '../src/sim/types.ts';
 import type { EnemyKind, Game, Input, Laser, Stats } from '../src/sim/types.ts';
 import { newGame, roomPlan, step } from '../src/sim/game.ts';
-import { makeEnemy } from '../src/sim/enemies.ts';
+import { BOMB_SPEED, SHIELD_BLAST_RADIUS, SHIELD_TURN, alarmsOf, makeEnemy } from '../src/sim/enemies.ts';
+import { ALARM_INTERVAL, AlarmLoops } from '../src/alarmLoop.ts';
+import { spawnLaser } from '../src/sim/hazards.ts';
+import { ENEMIES, enemyStats } from '../src/sim/core.ts';
 import { describeOffer, rollOffers, takeOffer } from '../src/sim/loot.ts';
 import {
   buyCharacter, buyUnlock, buyUpgrade, defaultSave, sanitize, selectCharacter, statsFrom,
@@ -59,6 +62,42 @@ for (const [height, state, expectHit] of [
   if (state === 'dash') step(g, idle(g, { dash: true, ...along(g) }));
   run(g, 0.1, (g) => ({ duck: state === 'ducken', ...(state === 'dash' ? along(g) : {}) }));
   check(`Laser ${height}, ${state}`, (g.hp < 100) === expectHit, { hp: g.hp });
+}
+
+console.log('--- Laser: nur noch „voll" ---');
+{
+  // Mit festem Zufall, damit die Prüfung nicht von Glück abhängt
+  const original = Math.random;
+  let seed = 20240607;
+  Math.random = () => {
+    seed = (seed + 0x6d2b79f5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+  const g = quiet();
+  try {
+    for (let i = 0; i < 400; i++) spawnLaser(g);
+  } finally {
+    Math.random = original;
+  }
+  const moving = g.lasers.filter((l) => l.speed !== 0).length;
+  check('Aus 400 erzeugten Lasern hat jeder die Höhe „voll"', g.lasers.length === 400 && g.lasers.every((l) => l.height === 'full'),
+    [...new Set(g.lasers.map((l) => l.height))]);
+  check('Rund ein Viertel der Laser ist beweglich (statisch zu beweglich 3 : 1)', moving >= 72 && moving <= 128, { moving });
+  check('Vorwarnung, Dauer und Tempo bleiben: Sperrlaser 3 s, Wanderlaser 200 px/s',
+    g.lasers.every((l) => l.warn === 1 && (l.speed === 0 ? l.life === 3 : Math.abs(l.speed) === 200 && l.life === Infinity)));
+}
+for (const state of ['stehen', 'ducken', 'springen', 'dash'] as const) {
+  const g = quiet();
+  if (state === 'ducken') run(g, 0.05, () => ({ duck: true }));
+  if (state === 'springen') step(g, idle(g, { jump: true }));
+  g.lasers.push({ vertical: true, pos: g.x - 20, speed: 200, height: 'full', warn: 0, life: Infinity }); // fährt über die Figur
+  const along = (g: Game) => ({ aimX: g.x, aimY: g.y + 1000 }); // Dash entlang des Lasers
+  if (state === 'dash') step(g, idle(g, { dash: true, ...along(g) }));
+  run(g, 0.4, (g) => ({ duck: state === 'ducken', ...(state === 'dash' ? along(g) : {}) }));
+  check(`Beweglicher Laser, ${state}: ${state === 'dash' ? 'I-Frames schützen' : 'trifft (25 Schaden)'}`,
+    g.hp === (state === 'dash' ? 100 : 75), { hp: g.hp });
 }
 
 console.log('--- Kick, Domino, Wrack ---');
@@ -169,7 +208,7 @@ console.log('--- Punkte ---');
   g.streak = 5;
   g.streakTimer = 4;
   add(g, 'hunter', 20);
-  run(g, 0.05);
+  run(g, 0.5); // Ausholen 0,35 s, dann der Schlag
   check('Treffer setzt die Serie zurück', g.streak === 0 && g.hp === 85, { streak: g.streak, hp: g.hp });
 }
 {
@@ -188,7 +227,7 @@ console.log('--- Gegnertypen ---');
   const back = add(g2, 'shield', 150);
   back.angle = 0; // dreht der Figur den Rücken zu
   run(g2, 0.15, () => ({ fire: true }));
-  check('Schild-Mech blockt Schüsse von vorn, nicht von hinten', front.hp === 60 && back.hp < 60, { front: front.hp, back: back.hp });
+  check('Schilddrohne blockt Schüsse von vorn, nicht von hinten', front.hp === 60 && back.hp < 60, { front: front.hp, back: back.hp });
 }
 {
   const standing = quiet();
@@ -206,13 +245,417 @@ console.log('--- Gegnertypen ---');
   check('Sprengdrohne detoniert an der Figur: 30 Schaden, keine Punkte', g.hp === 70 && g.score === 0 && g.enemies.length === 0,
     { hp: g.hp, score: g.score, enemies: g.enemies.length });
 }
+
+console.log('--- Skalierung mit dem Level ---');
+{
+  const [one, six] = [enemyStats('hunter', 1), enemyStats('hunter', 6)];
+  check('Jagddrohne: Level 1 hat die Grundwerte, Level 6 nach der Formel (64 / 20 / 191)',
+    one.hp === 40 && one.damage === 15 && one.speed === 165 && six.hp === 64 && six.damage === 20 && six.speed === 191, { one, six });
+  const e = makeEnemy('hunter', 100, 100, 6);
+  check('Der Gegner trägt seine Werte selbst', e.level === 6 && e.maxHp === 64 && e.hp === 64 && e.damage === 20 && e.speed === 191,
+    { level: e.level, hp: e.hp, damage: e.damage, speed: e.speed });
+  check('Ohne Level ist es Level 1', makeEnemy('hunter', 0, 0).level === 1 && makeEnemy('hunter', 0, 0).maxHp === 40);
+}
+{
+  const speeds = [1, 5, 10, 16, 20, 40, 100].map((n) => enemyStats('hunter', n).speed);
+  check('Tempo der Jagddrohne erreicht 250 und bleibt dort', enemyStats('hunter', 40).speed === 250 && speeds.every((v) => v <= 250)
+    && speeds.slice(-3).every((v) => v === 250), speeds);
+  const kinds = Object.keys(ENEMIES) as EnemyKind[];
+  check('Jeder Typ stößt an seine Tempo-Grenze, und keine liegt über dem Tempo der Figur ohne Upgrades (300)',
+    kinds.every((k) => enemyStats(k, 200).speed === ENEMIES[k].speedMax && ENEMIES[k].speedMax <= 300),
+    kinds.map((k) => [k, enemyStats(k, 200).speed]));
+  check('Leben wächst ohne Grenze, Schaden ebenfalls (Level 20: ×6,1 und ×3,0)',
+    enemyStats('hunter', 20).hp === Math.round(40 * 1.1 ** 19) && enemyStats('hunter', 20).damage === Math.round(15 * 1.06 ** 19)
+    && enemyStats('hunter', 21).hp > enemyStats('hunter', 20).hp);
+}
+{
+  const g = quiet();
+  g.hp = 100;
+  const e = makeEnemy('heavy', g.x + 20, g.y, 6);
+  g.enemies.push(e);
+  run(g, 0.05);
+  check('Berührung eines Gegners aus Level 6 zieht den skalierten Schaden ab (30 → 40)', g.hp === 60, { hp: g.hp });
+}
+{
+  const shotDamage = (level: number) => {
+    const g = quiet();
+    g.enemies.push(makeEnemy('gunner', g.x + 300, g.y, level));
+    for (let i = 0; i < 400 && g.shots.length === 0; i++) step(g, idle(g));
+    return g.shots[0]?.damage;
+  };
+  check('Geschoss einer Geschützdrohne aus Level 6 macht mehr Schaden als aus Level 1 (16 gegen 12)',
+    shotDamage(1) === 12 && shotDamage(6) === 16, { one: shotDamage(1), six: shotDamage(6) });
+}
+{
+  const g = quiet(baseStats(), 6);
+  g.spawnTimer = 0;
+  run(g, 1.3);
+  check('Erscheinende Gegner bekommen das Level des Raums', g.enemies.length > 0
+    && g.enemies.every((e) => e.level === 6 && e.maxHp === enemyStats(e.kind, 6).hp && e.speed === enemyStats(e.kind, 6).speed),
+    g.enemies.map((e) => [e.kind, e.level, e.maxHp]));
+}
+{
+  const killScore = (level: number) => {
+    const g = quiet();
+    const e = makeEnemy('hunter', g.x + 200, g.y, level);
+    e.hp = 1;
+    g.enemies.push(e);
+    run(g, 0.9, () => ({ fire: true }));
+    return g.score;
+  };
+  check('Punkte, Radius und Masse bleiben in Level 20 gleich (100 Punkte)',
+    killScore(1) === 100 && killScore(20) === 100 && Object.keys(enemyStats('hunter', 20)).sort().join() === 'damage,hp,speed'
+    && ENEMIES.hunter.r === 14 && ENEMIES.hunter.mass === 1 && ENEMIES.hunter.points === 100,
+    { one: killScore(1), twenty: killScore(20) });
+}
+{
+  const kinds = (n: number) => roomPlan(n).mix.map(([k]) => k).join();
+  check('Gegnertypen kommen ab ihrem Level dazu: Geschütz 3, Sprengdrohne 4, Schild 6, Schwerer Mech 7',
+    kinds(1) === 'hunter' && kinds(2) === 'hunter' && kinds(3) === 'hunter,gunner' && kinds(4) === 'hunter,gunner,bomber'
+    && kinds(6) === 'hunter,gunner,bomber,shield' && kinds(7) === 'hunter,gunner,bomber,shield,heavy', [1, 3, 4, 6, 7].map(kinds));
+  check('Anzahl und Erscheinungsrate wachsen weiter mit dem Level, die heutigen Werte bleiben',
+    roomPlan(1).maxEnemies === 6 && roomPlan(4).maxEnemies === 9 && roomPlan(9).maxEnemies === 14 && roomPlan(19).maxEnemies === 14
+    && roomPlan(5).maxEnemies === 3 && Math.abs(roomPlan(2).spawnEvery - 2.1) < 1e-9 && roomPlan(19).spawnEvery === 0.9
+    && roomPlan(5).spawnEvery === 4, [1, 4, 9, 19, 5].map((n) => [roomPlan(n).maxEnemies, roomPlan(n).spawnEvery]));
+}
+
+{
+  const boss = (room: number) => newGame(baseStats(), room).enemies.find((e) => e.kind === 'boss')!;
+  check('Boss: Level 5 hat 900 Trefferpunkte, Level 10 nach der Formel (1450), Level = Raumnummer',
+    boss(5).maxHp === 900 && boss(10).maxHp === 1450 && boss(10).level === 10 && boss(15).maxHp > boss(10).maxHp,
+    { five: boss(5).maxHp, ten: boss(10).maxHp });
+  check('Boss: Tempo und Berührungsschaden wachsen mit, Tempo bleibt unter 80 px/s',
+    boss(5).speed === 59 && boss(10).damage === 51 && enemyStats('boss', 100).speed === 80, { speed: boss(5).speed, damage: boss(10).damage });
+  const firstShot = (room: number) => {
+    const g = newGame(baseStats(), room);
+    g.barrels = [];
+    g.turrets = []; // ab Raum 8 steht im Boss-Raum ein Geschütz, dessen Schüsse nicht zählen sollen
+    g.laserTimer = g.spawnTimer = 1e9;
+    for (let i = 0; i < 600 && g.shots.length === 0; i++) step(g, idle(g));
+    return g.shots[0]?.damage;
+  };
+  const firstField = (room: number) => {
+    const g = newGame(baseStats(), room);
+    g.barrels = [];
+    g.turrets = []; // ab Raum 8 steht im Boss-Raum ein Geschütz, dessen Schüsse nicht zählen sollen
+    g.laserTimer = g.spawnTimer = 1e9;
+    g.enemies.find((e) => e.kind === 'boss')!.mode = 1; // beginnt mit den Bodenfeldern
+    for (let i = 0; i < 600 && g.fields.length === 0; i++) step(g, idle(g));
+    return g.fields[0];
+  };
+  const [shot5, shot10] = [firstShot(5), firstShot(10)];
+  const [field5, field10] = [firstField(5), firstField(10)];
+  check('Boss-Geschosse und Boss-Bodenfelder merken sich ihren Schaden mit dem Level des Bosses (Geschoss 19 → 25, Feld 25 → 34)',
+    shot5 === 19 && shot10 === 25 && field5?.damage === 25 && field10?.damage === 34 && field10?.enemyDamage === 51,
+    { shot5, shot10, field5, field10 });
+}
+
+console.log('--- Schilddrohne ---');
+{
+  check('Der Typ heißt im Spiel Schilddrohne', ENEMIES.shield.name === 'Schilddrohne');
+  const turned = (level: number) => {
+    const g = quiet();
+    const e = makeEnemy('shield', g.x + 300, g.y, level);
+    e.angle = 0; // dreht der Figur den Rücken zu
+    g.enemies.push(e);
+    run(g, 0.5);
+    return e.angle;
+  };
+  const [one, twenty] = [turned(1), turned(20)];
+  check('Drehrate des Schilds: in Level 1 und Level 20 gleich, 2,2 rad/s',
+    Math.abs(one - twenty) < 1e-9 && Math.abs(one - SHIELD_TURN * 0.5) < 0.02, { one, twenty });
+}
+{
+  // Die Drohne steht bei (g.x + drone, g.y); sie wird zerstört, der Nachbar steht neben ihr
+  const blast = (drone: number, neighbor: number, level = 6) => {
+    const g = quiet();
+    const e = makeEnemy('shield', g.x + drone, g.y, level);
+    g.enemies.push(e);
+    const near = add(g, 'hunter', drone, neighbor);
+    e.hp = 0;
+    step(g, idle(g));
+    return { g, e, near };
+  };
+  const inside = blast(60, 80);
+  const outside = blast(130, 140);
+  check('Zerstörte Schilddrohne (Level 6) verletzt die Figur mit 33 und den Nachbarn ebenso; sie ist weg, kein Wrack',
+    inside.g.hp === 67 && inside.near.hp === 40 - 33 && !inside.g.enemies.includes(inside.e)
+    && inside.g.blasts.some((b) => b.kind === 'shield' && b.r === SHIELD_BLAST_RADIUS),
+    { hp: inside.g.hp, near: inside.near.hp });
+  check('Außerhalb von 90 px passiert nichts', outside.g.hp === 100 && outside.near.hp === 40, { hp: outside.g.hp, near: outside.near.hp });
+  const level1 = blast(60, 80, 1);
+  check('In Level 1 sind es 25', level1.g.hp === 75 && level1.near.hp === 15, { hp: level1.g.hp, near: level1.near.hp });
+}
+{
+  const g = quiet();
+  g.x = g.prevX = 650;
+  const e = add(g, 'shield', 40);
+  e.hp = 20;
+  step(g, idle(g, { kick: true }));
+  run(g, 0.4);
+  check('Stirbt sie im Flug (Aufprall an der Wand), explodiert sie dort, und das Wrack entfällt',
+    !g.enemies.includes(e) && e.dead && g.blasts.some((b) => b.kind === 'shield') && g.marks.length === 1 && g.marks[0].x > 740 && g.hp === 100,
+    { marks: g.marks, hp: g.hp });
+}
+{
+  const g = quiet();
+  const e = add(g, 'shield', 200);
+  g.barrels.push({ x: e.x + 50, y: e.y, fuse: null, action: 0 });
+  g.mines.push({ x: e.x - 50, y: e.y, fuse: null, action: 0 });
+  e.hp = 0;
+  step(g, idle(g));
+  check('Die Explosion zündet Fässer und Minen', g.barrels[0].fuse !== null && g.mines[0].fuse !== null);
+}
+{
+  const g = quiet();
+  const e = add(g, 'shield', 60);
+  e.hp = 0;
+  step(g, idle(g, { dash: true, aimX: g.x, aimY: g.y + 1000 }));
+  check('I-Frames des Dashs schützen vor der Explosion', g.hp === 100 && g.blasts.some((b) => b.kind === 'shield'), { hp: g.hp });
+}
+{
+  const g = quiet();
+  const e = add(g, 'shield', 200);
+  const victim = add(g, 'hunter', 200, 60);
+  victim.hp = 1;
+  e.hp = 0;
+  run(g, 0.1);
+  check('Kill durch die Explosion zählt als Umgebung: 200 + 100 × 2 × 1,1',
+    g.score === 200 + 220 && g.kills === 2, { score: g.score, kills: g.kills });
+}
+{
+  const g = quiet();
+  const e = add(g, 'shield', 200);
+  e.hp = 0;
+  step(g, idle(g));
+  const at = { ...g.marks[0] };
+  run(g, 60);
+  const after60 = g.marks.length;
+  g.progress = g.plan.goal;
+  step(g, idle(g));
+  const afterClear = { phase: g.phase, marks: g.marks.length };
+  takeOffer(g, 0);
+  for (let i = 0; i < 3 / STEP && g.room === 1; i++) step(g, idle(g, { moveX: 1 }));
+  check('Spur: liegt an der Stelle, bleibt 60 s und über das Ende der Aufgabe, ist im nächsten Raum weg',
+    Math.abs(at.x - (400 + 200)) < 3 && at.r === 90 && after60 === 1 && afterClear.phase === 'exit' && afterClear.marks === 1
+    && g.room === 2 && g.marks.length === 0, { at, after60, afterClear, room: g.room, marks: g.marks.length });
+}
+
+console.log('--- Sprengdrohne ---');
+{
+  // Sie steht weit weg und läuft los; gemessen wird das Tempo über zwölf Schritte
+  const speedOf = (stats: Stats, level: number) => {
+    const g = quiet(stats);
+    const e = makeEnemy('bomber', g.x + 350, g.y, level);
+    g.enemies.push(e);
+    const from = e.x;
+    for (let i = 0; i < 12; i++) step(g, idle(g));
+    return (from - e.x) / (12 * STEP);
+  };
+  const plain = baseStats();
+  const fast = baseStats({ speed: 345 });
+  check('Tempo der Sprengdrohne: 1,5 × Tempo der Figur, auch mit Upgrade, in Level 1 und 20 gleich',
+    BOMB_SPEED === 1.5 && Math.abs(speedOf(plain, 1) - 1.5 * plain.speed) < 1e-6 && Math.abs(speedOf(plain, 20) - 1.5 * plain.speed) < 1e-6
+    && Math.abs(speedOf(fast, 1) - 1.5 * 345) < 1e-6 && Math.abs(speedOf(fast, 20) - 1.5 * 345) < 1e-6,
+    { plain: speedOf(plain, 1), plain20: speedOf(plain, 20), fast: speedOf(fast, 1), fast20: speedOf(fast, 20) });
+}
 {
   const g = quiet();
   const bomber = add(g, 'bomber', 250);
-  const near = add(g, 'hunter', 290);
-  run(g, 0.4, () => ({ fire: true }));
-  check('Abgeschossene Sprengdrohne reißt Nachbarn mit', !g.enemies.includes(bomber) && near.hp <= 0 && g.hp === 100,
-    { near: near.hp, hp: g.hp, score: g.score });
+  const near = add(g, 'hunter', 250, 25);
+  run(g, 0.5, () => ({ fire: true }));
+  check('Abgeschossene Sprengdrohne explodiert nicht: Nachbar und Figur unverletzt, Punkte gibt es',
+    !g.enemies.includes(bomber) && near.hp === 40 && g.hp === 100 && g.score === 120 && g.blasts.every((b) => b.kind !== 'bomb'),
+    { near: near.hp, hp: g.hp, score: g.score, blasts: g.blasts.length });
+}
+{
+  const g = quiet();
+  g.x = g.prevX = 650;
+  const bomber = add(g, 'bomber', 40);
+  bomber.fuse = 0.4; // Lunte brennt schon – wer sie vorher zerstört, bleibt trotzdem ohne Explosion
+  const near = add(g, 'heavy', 110, 70);
+  step(g, idle(g, { kick: true }));
+  run(g, 0.3);
+  check('Auch mit laufender Lunte: Aufprall im Flug zerstört sie ohne Explosion (Punkte als Umgebung ×2)',
+    !g.enemies.includes(bomber) && near.hp === near.maxHp && g.score === 240 && g.blasts.every((b) => b.kind !== 'bomb'),
+    { near: near.hp, score: g.score, blasts: g.blasts.map((b) => b.kind) });
+}
+{
+  const fuseAt = (dist: number, level = 1) => {
+    const g = quiet();
+    const e = makeEnemy('bomber', g.x + dist, g.y, level);
+    e.fuse = 0.05;
+    g.enemies.push(e);
+    const heavy = makeEnemy('heavy', g.x + dist, g.y + 100);
+    g.enemies.push(heavy);
+    run(g, 0.2);
+    return { g, hp: g.hp, heavy: heavy.hp, score: g.score };
+  };
+  const [near, far] = [fuseAt(150), fuseAt(180)];
+  check('Lunte abgelaufen: trifft in 150 px Abstand (Radius 160), in 180 px nicht; keine Punkte',
+    near.hp === 70 && far.hp === 100 && near.score === 0, { near: near.hp, far: far.hp, score: near.score });
+  const [one, six] = [fuseAt(100, 1), fuseAt(100, 6)];
+  check('Explosionsschaden in Level 6 höher als in Level 1: Figur 30 → 40, Gegner 40 → 54',
+    one.hp === 70 && six.hp === 60 && one.heavy === 160 - 40 && six.heavy === 160 - 54, { one, six: { hp: six.hp, heavy: six.heavy } });
+}
+{
+  const g = quiet();
+  g.x = g.prevX = 100;
+  const bomber = add(g, 'bomber', 40);
+  bomber.fuse = 0.5;
+  step(g, idle(g, { kick: true }));
+  run(g, 0.45);
+  const fuseWhileFlying = bomber.fuse;
+  const victim = makeEnemy('hunter', bomber.x, bomber.y + 80);
+  victim.hp = 1;
+  g.enemies.push(victim);
+  run(g, 0.1);
+  check('Gekickt mit laufender Lunte: sie brennt im Flug weiter, explodiert am Ziel, der Kill zählt als Umgebung (100 × 2)',
+    fuseWhileFlying !== null && fuseWhileFlying < 0.1 && g.blasts.some((b) => b.kind === 'bomb') && victim.dead && g.score === 200 && g.hp === 100,
+    { fuse: fuseWhileFlying, score: g.score, hp: g.hp });
+}
+
+console.log('--- Warnton der Sprengdrohne ---');
+{
+  const g = quiet();
+  g.x = g.prevX = 100; // der Kick soll nicht an der Wand enden
+  const none = alarmsOf(g).length;
+  const bomber = add(g, 'bomber', 40);
+  const approaching = alarmsOf(g);
+  step(g, idle(g, { kick: true }));
+  const kicked = alarmsOf(g).length;
+  run(g, 1);
+  const landed = alarmsOf(g).length;
+  bomber.fuse = 0.3;
+  const burning = alarmsOf(g);
+  bomber.hp = 0;
+  step(g, idle(g));
+  const dead = alarmsOf(g).length;
+  check('Alarm: an, solange eine Sprengdrohne lebt und nicht gekickt ist; sonst aus; mit Lunte dringlicher',
+    none === 0 && approaching.length === 1 && approaching[0].kind === 'beep' && approaching[0].urgency === 0
+    && kicked === 0 && landed === 1 && burning[0].urgency > 0.5 && dead === 0,
+    { none, approaching, kicked, landed, burning, dead });
+  const room = quiet();
+  add(room, 'bomber', 300);
+  room.progress = room.plan.goal;
+  step(room, idle(room));
+  const over = quiet();
+  add(over, 'bomber', 300);
+  over.over = true;
+  check('Alarm ist aus, wenn der Raum still ist oder das Spiel zu Ende', alarmsOf(room).length === 0 && room.phase === 'exit' && alarmsOf(over).length === 0);
+}
+{
+  const loops = new AlarmLoops();
+  const calm = [{ kind: 'beep' as const, urgency: 0 }];
+  const beeps = (t: number, active = calm, loop = true) => loops.update(active, t, () => loop).filter((c) => c.action === 'beep').length;
+  const first = beeps(0);
+  const early = beeps(ALARM_INTERVAL[0] - 0.05);
+  const due = beeps(ALARM_INTERVAL[0] + 0.01);
+  const urgent = [{ kind: 'beep' as const, urgency: 1 }];
+  const quick = beeps(ALARM_INTERVAL[0] + 0.01 + ALARM_INTERVAL[1] + 0.01, urgent);
+  const stopped = loops.update([], 5, () => true);
+  const again = loops.update([], 5.1, () => true);
+  check('Schleife: piept sofort, im Takt, dringlicher schneller, und endet sofort, wenn die Bedingung fällt',
+    first === 1 && early === 0 && due === 1 && quick === 1 && stopped.length === 1 && stopped[0].action === 'stop' && again.length === 0,
+    { first, early, due, quick, stopped, again });
+  const once = new AlarmLoops();
+  const count = (t: number, active: typeof calm) => once.update(active, t, () => false).filter((c) => c.action === 'beep').length;
+  const [c0, c1, c2] = [count(0, calm), count(30, calm), count(60, calm)];
+  once.update([], 61, () => false);
+  const c3 = count(62, calm);
+  check('Schleife ausgeschaltet: der Ton ertönt nur einmal beim Angehen, erneut erst nach einer Pause der Bedingung',
+    c0 === 1 && c1 === 0 && c2 === 0 && c3 === 1, { c0, c1, c2, c3 });
+}
+
+console.log('--- Jagddrohne: Nahkampf ---');
+{
+  const g = quiet();
+  const e = add(g, 'hunter', 30);
+  run(g, 0.05);
+  const x = e.x;
+  run(g, 0.15);
+  const whileWinding = { hp: g.hp, phase: e.melee?.phase, still: e.x === x };
+  run(g, 0.25);
+  check('Berührung verletzt nicht sofort: erst nach dem Ausholen (0,35 s), dann 15 Schaden; beim Ausholen steht sie still',
+    whileWinding.hp === 100 && whileWinding.phase === 'windup' && whileWinding.still && g.hp === 85 && e.melee?.phase === 'recover',
+    { whileWinding, hp: g.hp });
+}
+{
+  const g = quiet();
+  add(g, 'hunter', 40);
+  run(g, 0.45, () => ({ moveX: -1 }));
+  check('Läuft die Figur beim Ausholen aus der Reichweite, bleibt sie unverletzt', g.hp === 100, { hp: g.hp });
+}
+{
+  const g = quiet();
+  const e = add(g, 'hunter', 40);
+  run(g, 0.1);
+  g.x = g.prevX = e.x + 40; // steht nun hinter der Drohne: in Reichweite, aber nicht im Bogen
+  run(g, 0.4);
+  check('Steht die Figur beim Schlag außerhalb des Bogens (halber Winkel 60°), bleibt sie unverletzt', g.hp === 100, { hp: g.hp });
+}
+{
+  const g = quiet();
+  const e = add(g, 'hunter', 40);
+  run(g, 0.1);
+  const winding = e.melee?.phase === 'windup';
+  step(g, idle(g, { kick: true }));
+  const aborted = e.melee === null && e.kicked;
+  run(g, 0.7);
+  check('Ein Kick beim Ausholen bricht den Angriff ab', winding && aborted && g.hp === 100, { winding, aborted, hp: g.hp });
+}
+{
+  const g = quiet();
+  const e = add(g, 'hunter', 40);
+  run(g, 0.1);
+  step(g, idle(g, { fire: true }));
+  step(g, idle(g));
+  const aborted = e.melee === null;
+  run(g, 0.3); // ohne Abbruch käme der Schlag 0,25 s nach dem Schuss
+  check('Ein Treffer mit Rückstoß bricht das Ausholen ab', aborted && g.hp === 100, { aborted, hp: g.hp });
+}
+{
+  const g = quiet();
+  const e = add(g, 'hunter', 40);
+  run(g, 0.1);
+  step(g, idle(g, { dash: true }));
+  run(g, 0.35);
+  check('Ein Dash durch die Drohne beim Ausholen schützt die Figur', e.hp < e.maxHp && g.hp === 100, { hunter: e.hp, hp: g.hp });
+}
+{
+  const g = quiet();
+  const e = add(g, 'hunter', 30);
+  let t = 0;
+  while (g.hp === 100 && t < 1) {
+    step(g, idle(g));
+    t += STEP;
+  }
+  const struck = { hp: g.hp, phase: e.melee?.phase };
+  run(g, 0.45);
+  const recovering = e.melee?.phase === 'recover';
+  run(g, 0.1);
+  const windingAgain = e.melee?.phase === 'windup';
+  run(g, 0.2); // noch kein zweiter Schlag: 0,5 s Erholen + 0,35 s Ausholen
+  const hpBetween = g.hp;
+  run(g, 0.2);
+  check('Nach dem Schlag vergeht die Erholzeit (0,5 s), dann holt sie neu aus; der zweite Schlag kommt erst 0,85 s nach dem ersten',
+    struck.hp === 85 && struck.phase === 'recover' && recovering && windingAgain && hpBetween === 85 && g.hp === 70,
+    { struck, recovering, windingAgain, hpBetween, hp: g.hp });
+}
+{
+  const g = quiet();
+  g.enemies.push(makeEnemy('hunter', g.x + 30, g.y, 6));
+  run(g, 0.5);
+  check('Jagddrohne aus Level 6: Schlag mit skaliertem Schaden (20), Leben 64', g.hp === 80 && g.enemies[0].maxHp === 64, { hp: g.hp });
+  const speeds = Array.from({ length: 200 }, (_, i) => enemyStats('hunter', i + 1).speed);
+  check('Tempo der Jagddrohne überschreitet in keinem Level 250', Math.max(...speeds) === 250);
+}
+{
+  const g = quiet();
+  const heavy = makeEnemy('heavy', g.x + 20, g.y);
+  g.enemies.push(heavy);
+  run(g, 0.05);
+  check('Der Schwere Mech verletzt weiter durch Berührung (noch ohne Angriffsanimation)', g.hp === 70 && heavy.melee === null, { hp: g.hp });
 }
 
 console.log('--- Gefahren ---');
@@ -287,7 +730,7 @@ console.log('--- Waffen ---');
   add(g, 'shield', 150);
   const behind = add(g, 'hunter', 250);
   run(g, 0.6, () => ({ fire: true, duck: true }));
-  check('Schwerlaser: Schild-Mech von vorn hält den Strahl auf', behind.hp === behind.maxHp && g.kills === 0, { hp: behind.hp });
+  check('Schwerlaser: Schilddrohne von vorn hält den Strahl auf', behind.hp === behind.maxHp && g.kills === 0, { hp: behind.hp });
 }
 {
   const g = quiet(baseStats({ weapons: ['rail'] }));
@@ -343,7 +786,7 @@ console.log('--- Räume ---');
   run(g, 0.5, (g) => ({ fire: true, duck: true }));
   check('Boss besiegt: 2000 Punkte × Raum-Multiplikator, Ausgang öffnet sich', g.phase === 'exit' && g.kills === 1 && g.score >= 2000 * 2,
     { phase: g.phase, kills: g.kills, score: g.score });
-  check('Zweiter Boss hat mehr Trefferpunkte', newGame(baseStats(), 10).enemies[0].maxHp === 1350);
+  check('Zweiter Boss hat mehr Trefferpunkte, nach der Formel (Level 10: 615 × 1,1⁹)', newGame(baseStats(), 10).enemies[0].maxHp === Math.round(615 * 1.1 ** 9));
 }
 {
   const g = quiet();
@@ -416,7 +859,7 @@ console.log('--- Loot ---');
   check('Bei vollen Modul-Plätzen kommen keine neuen Module, nur Stufen',
     offers.every((o) => o.kind === 'weapon' || g.modules.some((m) => m.id === o.id)) && offers.length === 120);
   add(g, 'hunter', 20);
-  run(g, 0.05);
+  run(g, 0.5);
   check('Panzerung Stufe 2: 15 Schaden werden zu 11', g.hp === 100 - 11, { hp: g.hp });
 }
 {
@@ -521,9 +964,9 @@ console.log('--- Neue Module ---');
     g.streak = 3;
     g.streakTimer = 4;
     add(g, 'hunter', 20);
-    run(g, 0.05);
+    run(g, 0.5); // erster Schlag nach 0,35 s
     const first = { hp: g.hp, streak: g.streak };
-    run(g, 0.7);
+    run(g, 0.9); // Erholen 0,5 s, Ausholen 0,35 s, zweiter Schlag
     check('Schildgenerator: fängt den ersten Treffer ab, der zweite sitzt', first.hp === 100 && first.streak === 3 && g.hp === 85, { first, hp: g.hp });
   }
   {

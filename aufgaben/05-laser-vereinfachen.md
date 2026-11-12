@@ -1,6 +1,6 @@
 # 05 – Laser vereinfachen
 
-Status: offen
+Status: erledigt
 
 ## Ziel
 
@@ -42,8 +42,19 @@ Die bestehenden Prüfungen zu niedrigen und hohen Lasern bleiben, solange `heigh
 
 ## Aufgefallen
 
-(vom umsetzenden Agenten auszufüllen)
+- Ein beweglicher Laser (200 px/s, nur per Dash zu überwinden) ist jetzt im Verhältnis härter als vorher, weil man ihn nicht mehr überspringen oder unterducken kann. Das Tempo und die Vorwarnung bleiben laut Vorgabe der offenen Frage unverändert; das Balancing steht noch aus.
+- `Laser.height` (`src/sim/types.ts`) und `heightHits` bleiben bestehen: Die Prüfungen „Laser-Höhen" setzen niedrige und hohe Laser von Hand, und die übrigen Gefahren brauchen `heightHits` weiter. `spawnLaser` erzeugt aber nur noch `'full'`.
+- Die Wandhöhen-Spannen im Renderer (unten/oben) sind mit der Beschriftung entfernt, weil kein Laser sie mehr braucht. Die Farbe kommt weiter aus `HEIGHT_COLOR[l.height]` (Magenta für „voll").
+- Die Prüfung des Anteils beweglicher Laser läuft mit einem festen Zufallsstrom (Seed in der Prüfung), damit sie nicht gelegentlich zufällig aus dem Bereich von 18–32 % fällt; ohne Seed hätte sie bei 400 Lasern etwa eine Chance von 1 zu 800 auf einen falschen Alarm.
 
 ## Übergabe an den Planer
 
-(vom umsetzenden Agenten auszufüllen: umgesetzte und bewusst ausgelassene Regeln; neue Felder, Funktionen und Konstanten mit Datei; geänderte Prüfungen; was im Browser angesehen wurde)
+**Umgesetzt:** Regeln 1–5 vollständig, Darstellung wie beschrieben. Springen, Ducken, Slide und die Höhen der übrigen Gefahren sind unangetastet.
+
+**Neue Felder, Funktionen, Konstanten:**
+- `src/sim/hazards.ts`: `spawnLaser` ist jetzt exportiert (für Prüfungen), `LASER_MOVING_SHARE` (0,25 = 3 : 1). Beide Laserarten setzen `height: 'full'`; Vorwarnung, Dauer, Tempo und Schaden sind unverändert.
+- `src/render.ts`: `HEIGHT_LABEL` und `EMITTER_SPAN` entfallen; der Austritt geht immer über die ganze Wandhöhe, keine Beschriftung am Laser.
+
+**Geänderte Prüfungen:** keine. Die bestehenden „Laser-Höhen"-Prüfungen bleiben, wie die Aufgabe es verlangt. Neu: Abschnitt „Laser: nur noch ‚voll'" in `tests/rules.ts` (400 Laser alle „voll", Anteil beweglicher Laser 18–32 %, Vorwarnung/Dauer/Tempo unverändert, beweglicher Laser trifft stehende, geduckte und springende Figur, nur der Dash schützt). Mutationsprobe: Mit Anteil 50 % oder einem Wanderlaser der Höhe „niedrig" schlägt die jeweilige Prüfung an.
+
+**Im Browser angesehen (Chromium):** Eine eigens gezeichnete Szene mit einem scharfen Sperrlaser, einem scharfen Wanderlaser und einem Sperrlaser in der Vorwarnung: alle magenta, der Austritt reicht an den Wänden über die ganze Höhe, keine Beschriftung mehr.

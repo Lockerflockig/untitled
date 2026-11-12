@@ -20,7 +20,24 @@ const POINTS_ROOM = 500;
 const NO_HIT_BONUS = 1.5; // Faktor auf den Raum-Bonus, wenn man nicht getroffen wurde
 const REVIVE_SHIELD = 2;
 const BOSS_EVERY = 5;
-const BOSS_HP_GROWTH = 0.5; // je weiterem Boss-Raum so viel mehr Trefferpunkte
+
+// --- Was mit dem Level steigt ----------------------------------------------------
+// Level ist die Raumnummer. Leben, Tempo und Schaden jedes Gegners wachsen in
+// core.ts (enemyStats). Hier steht der Rest an einer Stelle: welche Typen
+// erscheinen, wie viele gleichzeitig im Raum sind und wie schnell sie nachkommen.
+// Die Mengen und das Verhältnis von Nah- zu Fernkämpfern werden später eigens überarbeitet.
+
+/** Gegnertypen, die im Raum erscheinen: ab welchem Level sie dazukommen und mit welchem Gewicht sie gewürfelt werden. */
+const SPAWN_MIX: { kind: EnemyKind; from: number; weight: number }[] = [
+  { kind: 'hunter', from: 1, weight: 6 },
+  { kind: 'gunner', from: 3, weight: 2 },
+  { kind: 'bomber', from: 4, weight: 2 },
+  { kind: 'shield', from: 6, weight: 2 },
+  { kind: 'heavy', from: 7, weight: 1 },
+];
+const MAX_ENEMIES = { base: 5, perLevel: 1, cap: 14 }; // gleichzeitig im Raum: 5 + Level, höchstens 14
+const SPAWN_EVERY = { start: 2.4, perLevel: 0.15, min: 0.9 }; // s zwischen zwei neuen Gegnern: sinkt mit dem Level
+const BOSS_ROOM = { maxEnemies: 3, spawnEvery: 4 }; // im Boss-Raum kommen nur wenige Begleiter
 
 /**
  * Was ein Raum enthält. Neue Gegner und Gefahren kommen einzeln dazu; ab Raum 8
@@ -33,11 +50,7 @@ export function roomPlan(n: number): RoomPlan {
   const objective = n % BOSS_EVERY === 0 ? 'boss' : n <= intro.length ? intro[n - 1] : cycle[n % cycle.length];
   const boss = objective === 'boss';
 
-  const mix: [EnemyKind, number][] = [['hunter', 6]];
-  if (n >= 3) mix.push(['gunner', 2]);
-  if (n >= 4) mix.push(['bomber', 2]);
-  if (n >= 6) mix.push(['shield', 2]);
-  if (n >= 7) mix.push(['heavy', 1]);
+  const mix = SPAWN_MIX.filter((m) => n >= m.from).map((m): [EnemyKind, number] => [m.kind, m.weight]);
 
   const goal = {
     collect: 10 + 2 * Math.floor(n / 3),
@@ -53,8 +66,8 @@ export function roomPlan(n: number): RoomPlan {
     goal,
     mix,
     // Im Boss-Raum kommen nur wenige Begleiter; der Boss legt seine Bodenfelder selbst
-    maxEnemies: boss ? 3 : Math.min(14, 5 + n),
-    spawnEvery: boss ? 4 : Math.max(0.9, 2.4 - 0.15 * n),
+    maxEnemies: boss ? BOSS_ROOM.maxEnemies : Math.min(MAX_ENEMIES.cap, MAX_ENEMIES.base + MAX_ENEMIES.perLevel * n),
+    spawnEvery: boss ? BOSS_ROOM.spawnEvery : Math.max(SPAWN_EVERY.min, SPAWN_EVERY.start - SPAWN_EVERY.perLevel * n),
     laserEvery: [3.5 * pace, 5.5 * pace],
     maxLasers: Math.min(4, 2 + Math.floor(n / 4)),
     beamEvery: n >= 7 && !boss ? Math.max(3, 8 - 0.3 * n) : null,
@@ -101,6 +114,7 @@ function enterRoom(g: Game, n: number) {
   g.roomHit = false;
   g.roomKills = 0;
   clearRoom(g);
+  g.marks = []; // Spuren überstehen das Ende der Aufgabe (clearRoom), nicht den Raumwechsel
   g.pickups = [];
   g.arcs = [];
   g.guard = g.stats.guard; // der Schildgenerator lädt in jedem Raum neu
@@ -117,8 +131,8 @@ function enterRoom(g: Game, n: number) {
     for (let i = 0; i < BANANAS_ON_FIELD; i++) g.bananas.push(spot(g, 50, 150));
   }
   if (g.plan.objective === 'boss') {
-    const boss = makeEnemy('boss', ARENA - 160, ARENA / 2);
-    boss.hp = boss.maxHp = Math.round(boss.maxHp * (1 + BOSS_HP_GROWTH * (n / BOSS_EVERY - 1)));
+    // Der Boss skaliert wie alle über sein Level (die Raumnummer): Level 5 hat 900 Trefferpunkte
+    const boss = makeEnemy('boss', ARENA - 160, ARENA / 2, n);
     boss.cooldown = 2.5;
     g.enemies.push(boss);
   }
@@ -141,7 +155,7 @@ export function newGame(stats: Stats, startRoom = 1): Game {
     weapon: 0, weaponCooldown: stats.weapons.map(() => 0),
     bullets: [], playerBeam: null, enemies: [], spawns: [], spawnTimer: 0,
     lasers: [], laserTimer: 0, beams: [], beamTimer: 0, fields: [], fieldTimer: 0,
-    mines: [], barrels: [], turrets: [], shots: [], blasts: [], bananas: [],
+    mines: [], barrels: [], turrets: [], shots: [], blasts: [], marks: [], bananas: [],
     score: 0, streak: 0, streakTimer: 0, actionId: 0, comboAction: 0, comboKills: 0,
     popups: [], kills: 0, roomKills: 0, time: 0, over: false, events: [],
   };

@@ -4,7 +4,7 @@
 // hineingekickt. Explosionen und Bodenfelder treffen sie immer.
 
 import { ARENA, STEP } from './types.ts';
-import type { Game, Height } from './types.ts';
+import type { Game } from './types.ts';
 import {
   BLAST_TIME, ENEMIES, PLAYER_R, TURRET_R, award, damageEnemy, explode, heightHits, hurtPlayer, levelOf, rand,
 } from './core.ts';
@@ -14,6 +14,7 @@ import { dropFrom } from './loot.ts';
 export const LASER_WARN = 1.0; // so lange kündigt sich ein Laser an
 const LASER_STAY = 3; // Dauer eines Sperrlasers
 const LASER_SWEEP = 200; // Tempo eines Wanderlasers
+const LASER_MOVING_SHARE = 0.25; // Anteil der Wanderlaser: statisch zu beweglich wie 3 : 1
 const LASER_DAMAGE = 25;
 const LASER_ENEMY_DAMAGE = 40;
 
@@ -28,8 +29,8 @@ const BEAM_DAMAGE = 30;
 export const FIELD_WARN = 1.0;
 export const FIELD_ACTIVE = 0.35;
 export const FIELD_RADIUS = 70;
-const FIELD_DAMAGE = 20;
-const FIELD_ENEMY_DAMAGE = 30;
+export const FIELD_DAMAGE = 20; // an der Figur; Felder des Bosses skalieren mit seinem Level, die aus dem Raum nicht
+export const FIELD_ENEMY_DAMAGE = 30; // an Gegnern
 
 // Mine (niedrig)
 const MINE_TRIGGER = 45;
@@ -52,26 +53,29 @@ const TURRET_POINTS = 150;
 
 export const SHOT_R = 5;
 
-function spawnLaser(g: Game) {
+/**
+ * Neuer Laser. Es gibt nur noch Laser der Höhe „voll": Springen und Ducken helfen nicht,
+ * nur der Dash (I-Frames) schützt. Zwei Arten: Sperrlaser (steht für seine Dauer an einer
+ * Stelle) und Wanderlaser (fährt von Wand zu Wand), im Verhältnis 3 : 1.
+ */
+export function spawnLaser(g: Game) {
   const vertical = Math.random() < 0.5;
-  if (Math.random() < 0.5) {
-    // Wanderlaser: fährt von einer Wand zur anderen
+  if (Math.random() < LASER_MOVING_SHARE) {
     const fromStart = Math.random() < 0.5;
     g.lasers.push({
       vertical,
       pos: fromStart ? 0 : ARENA,
       speed: fromStart ? LASER_SWEEP : -LASER_SWEEP,
-      height: Math.random() < 0.5 ? 'low' : 'high',
+      height: 'full',
       warn: LASER_WARN,
       life: Infinity,
     });
   } else {
-    const heights: Height[] = ['low', 'high', 'full'];
     g.lasers.push({
       vertical,
       pos: rand(80, ARENA - 80),
       speed: 0,
-      height: heights[Math.floor(Math.random() * heights.length)],
+      height: 'full',
       warn: LASER_WARN,
       life: LASER_STAY,
     });
@@ -178,13 +182,13 @@ export function stepHazards(g: Game) {
       if (f.warn <= 0) {
         // Gegner trifft es einmal beim Auslösen
         for (const e of g.enemies) {
-          if (Math.hypot(e.x - f.x, e.y - f.y) < f.r) damageEnemy(e, FIELD_ENEMY_DAMAGE, 'env');
+          if (Math.hypot(e.x - f.x, e.y - f.y) < f.r) damageEnemy(e, f.enemyDamage ?? FIELD_ENEMY_DAMAGE, 'env');
         }
       }
       return true;
     }
     f.active -= STEP;
-    if (Math.hypot(g.x - f.x, g.y - f.y) < f.r && heightHits('low', level)) hurtPlayer(g, FIELD_DAMAGE);
+    if (Math.hypot(g.x - f.x, g.y - f.y) < f.r && heightHits('low', level)) hurtPlayer(g, f.damage ?? FIELD_DAMAGE);
     return f.active > 0;
   });
 

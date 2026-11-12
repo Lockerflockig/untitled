@@ -76,7 +76,7 @@ bei der Pistole fällt sie nur auf weite Distanz ins Gewicht.
 |---|---|
 | Pistole (Standard) | einzelne Schüsse, mittlere Rate |
 | Schrot | sechs Projektile im Fächer, kurze Reichweite |
-| Schwerlaser | lädt kurz auf, dann brennt ein Strahl für einen Moment durch alle Gegner in einer Linie; hohe Abklingzeit, ein Schild-Mech von vorn hält ihn auf |
+| Schwerlaser | lädt kurz auf, dann brennt ein Strahl für einen Moment durch alle Gegner in einer Linie; hohe Abklingzeit, eine Schilddrohne von vorn hält ihn auf |
 | Granate | Flächenschaden beim Einschlag; verletzt die Figur nicht |
 
 ### Trefferpunkte und Leben **[fest]**
@@ -106,12 +106,12 @@ Grundregeln:
 - Jede Gefahr kündigt sich sichtbar an, bevor sie Schaden macht.
 - Gegner sind gegen Laser und Zielstrahl immun, außer sie werden hineingekickt **[fest]**.
 - Explosionen und Bodenfelder treffen Gegner immer **[Vorschlag]** – dorthin kann man sie also auch locken.
-- Die Laserhöhe ist an der Wand ablesbar: Austritt unten, oben oder über die ganze Wandhöhe **[fest als Platzhalter]**.
+- Laser haben nur noch die Höhe „voll" **[fest]**: Springen und Ducken helfen nicht, nur der Dash (I-Frames) schützt. Der Austritt an der Wand geht immer über die ganze Wandhöhe. Das bereitet vor, Ducken und Springen später zu ersetzen; die übrigen Gefahren behalten vorerst ihre Höhen.
 
 | Gefahr | Höhe | Verhalten | ab Raum |
 |---|---|---|---|
-| Sperrlaser | niedrig, hoch oder voll | eine Linie teilt den Raum für 3 s | 1 |
-| Wanderlaser | niedrig oder hoch | eine Linie fährt von Wand zu Wand | 1 |
+| Sperrlaser | voll | eine Linie teilt den Raum für 3 s | 1 |
+| Wanderlaser | voll | eine Linie fährt von Wand zu Wand; ein Viertel der Laser, der Rest sind Sperrlaser (3 : 1) | 1 |
 | Fass | voll | explodiert bei Schuss, Explosion oder Aufprall eines gekickten Gegners | 2 |
 | Bodenfeld | niedrig | Fläche nahe der Figur leuchtet auf, löst nach 1 s aus | 3 |
 | Mine | niedrig | zündet bei Annäherung; Überspringen löst sie nicht aus; abschießbar | 4 |
@@ -125,13 +125,75 @@ nur die Bewegung eingeschränkt haben **[fest]**.
 
 | Gegner **[Vorschlag]** | Verhalten | Konter | ab Raum |
 |---|---|---|---|
-| Jagddrohne | fliegt auf die Figur zu | alles; ideal zum Kicken | 1 |
+| Jagddrohne | fliegt auf die Figur zu und schlägt mit Angriffsanimation (kein Berührungsschaden) | aus dem Bogen laufen, Dash; Kick oder Treffer unterbrechen; ideal zum Kicken | 1 |
 | Geschützdrohne | hält Abstand, zielt sichtbar, schießt hoch | ducken, dann hin | 3 |
-| Sprengdrohne | schnell, zündet nahe der Figur; detoniert auch abgeschossen | wegkicken oder auf Abstand abschießen | 4 |
-| Schild-Mech | blockt Schüsse von vorn, dreht sich langsam | umlaufen, Dash, Kick, Granate | 6 |
+| Sprengdrohne | läuft mit dem 1,5-fachen Tempo der Figur zu, zündet nahe der Figur, Warnton; explodiert nur durch ihre Lunte | rechtzeitig abschießen oder wegkicken (dann keine Explosion) | 4 |
+| Schilddrohne | blockt Schüsse von vorn, richtet den Schild langsam zur Figur aus; explodiert beim Zerstören | umlaufen, Dash, Kick, Granate; Abstand zur Explosion halten | 6 |
 | Schwerer Mech | viel Leben, viel Masse | Umgebung nutzen, Dauerfeuer | 7 |
 
 Die Namen sind Arbeitstitel. Gegner kündigen ihr Erscheinen an.
+
+**Jagddrohne:** Sie verletzt nicht mehr durch Berührung. Sobald die Figur in
+Reichweite ist (50 px ab Rand der Drohne, der Körper der Figur zählt), bleibt
+sie stehen und holt 0,35 s aus; die Richtung steht zu Beginn fest, und am Boden
+ist der Bogen angedeutet (halber Öffnungswinkel 60°). Danach schlägt sie einmal:
+Wer im Bogen steht, nimmt Schaden (alle Höhen; I-Frames und Schonzeit schützen
+wie sonst). Dann steht sie 0,5 s und kann nicht angreifen. Wer während des
+Ausholens aus dem Bogen läuft, dasht oder die Drohne wegkickt, wird nicht
+getroffen; ein Kick oder jeder Treffer mit Rückstoß bricht das Ausholen ab.
+Gekickte Drohnen greifen nicht an. Dauer, Reichweite und Winkel skalieren nicht
+mit dem Level, Leben, Schaden und Tempo (höchstens 250 px/s) schon. Der Angriff
+ist als Baustein gebaut (`MELEE` in `src/sim/enemies.ts`), damit Schilddrohne
+und Schwerer Mech ihn später mit eigenen Werten übernehmen können; bis dahin
+verletzen sie noch durch Berührung.
+
+**Schilddrohne:** Ihr Schild dreht sich mit fester Rate (2,2 rad/s, skaliert
+nicht mit dem Level) zur Figur; Schüsse von vorn schluckt er vorerst, später
+soll er sie reflektieren. Wird sie zerstört – egal wodurch, auch im Flug –,
+explodiert sie ohne Ankündigung: Radius 90 px, 25 Schaden in Level 1 (wächst mit
+dem Level) für Figur und Gegner, zündet Minen und Fässer, ein Wrack bleibt nicht.
+Kills durch diese Explosion zählen als Umgebung (×2). Sie hinterlässt einen
+dunklen Brandfleck am Boden, der bis zum Wechsel in den nächsten Raum liegen
+bleibt (auch nach erfüllter Aufgabe) und vorerst nur zu sehen ist. Löst sich
+der Raum auf, weil die Aufgabe erfüllt ist, explodiert keine Drohne.
+
+**Sprengdrohne:** Sie läuft immer mit dem 1,5-fachen Höchsttempo der Figur
+(einschließlich Upgrades und Charakter) auf sie zu; ihr Tempo skaliert nicht
+mit dem Level. Nahe der Figur (70 px) zündet sie eine Lunte von 0,6 s und
+explodiert dann mit Radius 160 px; der Schaden wächst mit dem Level. Wer sie
+vorher zerstört – Schuss, Dash, Kick, Aufprall, fremde Explosion –, bekommt die
+Punkte, und sie verschwindet ohne Explosion. Eine gekickte Drohne mit brennender
+Lunte brennt im Flug weiter und explodiert am Ziel; getroffene Gegner zählen
+als Umgebung (×2). Solange mindestens eine Sprengdrohne auf die Figur
+zuläuft (im Raum, lebt, nicht gekickt), piept ein Warnton als Schleife; er
+wird schneller und höher, sobald eine Lunte brennt. Der Ton ist über
+`public/sounds/sounds.json` austauschbar (Name `beep`) und die Schleife je Ton
+abschaltbar.
+
+### Skalierung mit dem Level **[fest]**
+
+Level ist die Raumnummer. Jeder Gegner bekommt beim Erscheinen Werte, die mit
+dem Level exponentiell wachsen und danach unverändert bleiben:
+
+| Wert | Wachstum je Level | Level 10 | Level 20 |
+|---|---|---|---|
+| Leben | ×1,10 | ×2,4 | ×6,1 |
+| Schaden | ×1,06 | ×1,7 | ×3,0 |
+| Tempo | ×1,03, begrenzt je Typ | | |
+
+Der Schaden gilt für jeden Angriff des Gegners (Berührung, Geschosse,
+Explosion). Das Tempo hat je Typ eine harte Obergrenze, damit kein Verfolger
+dauerhaft schneller wird als die Figur ohne Upgrades (300 px/s): Jagddrohne
+250, Geschützdrohne 170, Schild 190, Schwerer Mech 130, Boss 80. (Die
+Sprengdrohne hat keine eigene Grenze: Ihr Tempo hängt am Tempo der Figur,
+siehe unten.)
+Radius, Masse und Punkte skalieren nicht; Gefahren im Raum (Laser, Minen,
+Fässer, Geschütze, Bodenfelder, Zielstrahl) auch nicht. Welche Typen erscheinen,
+wie viele gleichzeitig da sind und wie schnell sie nachkommen, steht in
+`roomPlan` (`src/sim/game.ts`). **Der Boss skaliert wie alle** über sein Level
+(die Raumnummer): Sein Grundwert für Leben (615) ist so gewählt, dass der erste
+Boss in Raum 5 wieder 900 Trefferpunkte hat. Das gilt auch für seinen Schaden
+(Berührung, Geschosse, Bodenfelder).
 
 ## 7. Räume und Aufgaben **[fest]**
 
@@ -148,14 +210,16 @@ in den nächsten Raum.
 
 Raumfolge **[Vorschlag]**: Raum 1 Bananen · 2 Säubern (Fässer) · 3 Bananen
 (Geschützdrohne, Bodenfeld) · 4 Überleben (Sprengdrohne, Minen) · 5 Boss ·
-6 Geschütze (Schild-Mech) · 7 Säubern (Schwerer Mech, Zielstrahl) · 8 Bananen.
+6 Geschütze (Schilddrohne) · 7 Säubern (Schwerer Mech, Zielstrahl) · 8 Bananen.
 Danach wechseln die Aufgaben reihum, alles wird dichter. Der Run ist endlos.
 
 **Boss-Räume [Vorschlag]:** Jeder fünfte Raum. Der Boss ist ein Panzer: viel
 Leben, praktisch nicht wegzukicken, rollt langsam auf die Figur zu. Er wechselt
 zwei angekündigte Angriffe ab – ein Fächer hoher Geschosse (blauer Ring:
 ducken) und drei Bodenfelder um die Figur (oranger Ring: springen). Dazu kommen
-wenige Jagddrohnen. Jeder weitere Boss hat 50 % mehr Trefferpunkte.
+wenige Jagddrohnen. Der Boss skaliert wie alle Gegner mit seinem Level
+(Raumnummer): Der erste in Raum 5 hat 900 Trefferpunkte, der in Raum 10 rund
+1450; sein Schaden wächst mit.
 
 ## 8. Punkte und Multiplikatoren **[fest]**
 
@@ -284,7 +348,6 @@ Geschützdrohne, Boss und Geschütze greifen öfter an.
 ### Für später vorgemerkt (von dir genannt)
 
 - Das Loot-System weiter ausarbeiten.
-- Gegner skalieren mit dem Level.
 - Schild-Drohnen reflektieren Geschosse, statt sie nur zu schlucken.
 - Eigene Explosionen können auch der Figur schaden.
 - Minen eventuell als passive Fähigkeit.
@@ -300,7 +363,7 @@ Geschützdrohne, Boss und Geschütze greifen öfter an.
 Stand:
 - **Figur [fest]:** City Man (Variante 3, Anzug) in Seitenansicht, gespiegelt nach Zielrichtung, mit getrennt drehbarer Waffe. Cyborg und andere können später als Skin oder eigene Figur in den Shop.
 - **Notlösungen, bis es eigene Animationen gibt:** Kick = Schlag, Sprung und Dash = ein Renn-Bild, Ducken = gestauchtes Bild, Slide = das Hechten-Bild aus der Tod-Animation.
-- **Ton [fest]:** per Code erzeugte Platzhalter, ein Schuss-Sound für alle Waffen. Eigene Dateien lassen sich über `public/sounds/sounds.json` eintragen. Musik kommt später.
+- **Ton [fest]:** per Code erzeugte Platzhalter, ein Schuss-Sound für alle Waffen. Eigene Dateien lassen sich über `public/sounds/sounds.json` eintragen. Dauertöne (Warnton der Sprengdrohne) laufen als Schleife, solange ihre Bedingung gilt; die Logik meldet sie über `alarmsOf` (`src/sim/enemies.ts`), `src/alarmLoop.ts` taktet sie, `src/audio.ts` spielt sie. Musik kommt später.
 - **Darstellung bleibt vorerst Canvas 2D [Vorschlag]:** Sprites, Animationen und Ton gehen damit ohne Umbau. Phaser lohnt erst, wenn Partikel, Kamera oder Kacheln mehr verlangen.
 - Assets liegen unter `public/assets/`. Sie stammen aus Craftpix-Paketen; vor einer Veröffentlichung des Quellcodes die Lizenz prüfen (https://craftpix.net/file-licenses/).
 

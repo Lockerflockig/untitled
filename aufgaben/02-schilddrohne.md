@@ -1,6 +1,6 @@
 # 02 – Schilddrohne
 
-Status: offen · baut auf 01 auf
+Status: erledigt bis auf die Reflexion (Regeln 4–9, dem Planer vorbehalten) · baut auf 01 auf
 
 > **STOPP für den umsetzenden Agenten:** Umgesetzt werden nur die Regeln 1–3
 > und 10–16. Vor der Reflexion (Regeln 4–9) ist Schluss – sie gehört dem
@@ -104,8 +104,25 @@ Für den Planer, zusammen mit der Reflexion:
 
 ## Aufgefallen
 
-(vom umsetzenden Agenten auszufüllen)
+- Die Schilddrohne hat weiter Berührungsschaden (20, mit dem Level wachsend) und keine Angriffsanimation; das ist in `LIESMICH.md` unter „Vorgemerkt" geführt und hier nicht angefasst.
+- Der Mehrfach-Aufschlag der Explosion richtet sich nach der Aktion, die die Drohne zuletzt getroffen hat (`e.action`). Stirbt sie durch einen einzelnen Pistolenschuss, ist die Aktion 0; dann zählt jeder Kill der Explosion für sich ohne Aufschlag (nur ×2 als Umgebung). Das entspricht der Vorgabe „mit der Aktion des auslösenden Kills", nur ist bei Einzelschüssen eben keine Aktion gesetzt.
+- Die Spur wird in `enemies.ts` direkt neben der Explosion angelegt, nicht in `explode`. Andere Explosionen hinterlassen daher (noch) keine Spur.
+- Ob die Explosion die Figur bei I-Frames verfehlt, hängt an `hurtPlayer` (I-Frames und Schonzeit schützen); die Explosion selbst ist nicht „durchlässig".
 
 ## Übergabe an den Planer
 
-(vom umsetzenden Agenten auszufüllen: umgesetzte und bewusst ausgelassene Regeln; neue Felder, Funktionen und Konstanten mit Datei; geänderte Prüfungen; was im Browser angesehen wurde)
+**Umgesetzt:** Regeln 1–3 und 10–16. **Bewusst nicht:** Regeln 4–9 (Reflexion). Der Schild schluckt Projektile weiter wie bisher; `g.bullets` und `g.shots` sind unverändert getrennt. Die Vorgaben der offenen Fragen sind eingehalten (Spuren nur sichtbar; Kill durch die Explosion zählt als Umgebung ×2; keine Explosion, wenn der Raum endet; nur Projektile).
+
+**Neue Felder, Funktionen, Konstanten:**
+- `src/sim/types.ts`: `Mark` (`x`, `y`, `r`), `Game.marks`; `BlastKind` um `'shield'` erweitert.
+- `src/sim/enemies.ts`: `SHIELD_TURN` (jetzt exportiert), `SHIELD_BLAST_RADIUS` (90), `SHIELD_BLAST_DAMAGE` (25 in Level 1, über `scaledDamage` skaliert). Die Explosion steckt in der Todes-Behandlung am Ende von `stepEnemies` (neben der der Sprengdrohne): `explode(…, 'env', e.action, 'shield')`, danach `g.marks.push(…)`, `return false` (kein Wrack).
+- `src/sim/game.ts`: `newGame` legt `marks: []` an; `enterRoom` leert sie, `clearRoom` nicht.
+- `src/render.ts`: `drawMarks` (Brandfleck, per Code; aus der Lage abgeleitete Form), aufgerufen in `drawScene` direkt nach `drawRoom`; `BLAST_FALLBACK.shield`.
+- `src/sprites.ts`: `BLAST_LOOKS.shield` (blau umgefärbt, optional eigenes Bild `assets/fx/explosion-shield.png`).
+- `ENEMIES.shield.name` ist „Schilddrohne"; Kommentare und Prüfungs-Beschriftungen mit „Schild-Mech" sind angepasst.
+
+**Anknüpfen für die Reflexion:** Die Stellen, an denen der Schild Projektile schluckt, sind in `src/sim/player.ts` `stepBullets` (Zweig `e.kind === 'shield' && fromFront && !e.kicked`, `detonate()`) und `stepPlayerBeam` (Strahl endet am Schild); gegnerische Geschosse (`g.shots` in `hazards.ts`) prüfen den Schild bisher gar nicht.
+
+**Geänderte Prüfungen:** nur Beschriftungen („Schild-Mech" → „Schilddrohne"). Neu ist der Abschnitt „Schilddrohne" in `tests/rules.ts`: Name, Drehrate in Level 1 und 20, Explosion mit Schaden an Figur und Nachbar (Level 6: 33, Level 1: 25) und außerhalb des Radius nichts, Tod im Flug ohne Wrack, Fässer und Minen, I-Frames, Punkte (Umgebung ×2), Spur (60 s, nach erfüllter Aufgabe, im nächsten Raum weg). Der Schwerlaser endet weiter am Schild (bestehende Prüfung).
+
+**Im Browser angesehen:** Eine eigens gezeichnete Szene in Chromium (Raum 6): zwei ältere Brandflecken und eine frische Explosion; Gegner, Banane, lebende Schilddrohne und Figur liegen über den Flecken, die Flecken über dem Bodenmuster. Gesehen wurde die Umfärbung der Explosion nur als Ersatzkreis, weil die Sprite-Bilder fehlen. Nicht gesehen: die Explosion mit dem Original-Sprite.

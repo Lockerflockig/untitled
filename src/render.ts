@@ -8,7 +8,7 @@ import {
   BANANA_R, BARREL_R, BLAST_TIME, ENEMIES, MINE_R, PLAYER_R as BASE_R, TURRET_R, jumpHeight,
 } from './sim/core.ts';
 import { BULLET_R, KICK_ARC, KICK_REACH } from './sim/player.ts';
-import { BOMB_FUSE, GUNNER_WINDUP, SPAWN_WARN } from './sim/enemies.ts';
+import { BOMB_FUSE, BOMB_RADIUS, GUNNER_WINDUP, MELEE, SPAWN_WARN } from './sim/enemies.ts';
 import { BEAM_LOCK, FIELD_WARN, LASER_WARN, SHOT_R, TURRET_HP } from './sim/hazards.ts';
 import { ENTRY_X, EXIT_HALF, EXIT_Y, RUN_OUT_TIME, SLIDE_TIME } from './sim/game.ts';
 import { drawEnemySprite, drawExplosionSprite, enemySpriteReady } from './sprites.ts';
@@ -21,7 +21,6 @@ export const WALL = 60;
 export const VIEW = ARENA + 2 * WALL; // Kantenlänge des gezeichneten Ausschnitts
 
 const HEIGHT_COLOR: Record<Height, string> = { low: '#ffb347', high: '#4da3ff', full: '#ff4fd8' };
-const HEIGHT_LABEL: Record<Height, string> = { low: 'NIEDRIG · springen', high: 'HOCH · ducken', full: 'VOLL · dashen' };
 const ENEMY_COLOR = { hunter: '#ff5d73', gunner: '#ff9f43', shield: '#b388ff', bomber: '#ffe066', heavy: '#c0392b', boss: '#2ecc71' };
 
 type Ctx = CanvasRenderingContext2D;
@@ -183,9 +182,7 @@ function drawRoom(ctx: Ctx, room: number, doors: { entry: boolean; exit: boolean
   }
 }
 
-/** Austritt eines Lasers an beiden Wänden: unten, oben oder über die ganze Wandhöhe. */
-const EMITTER_SPAN: Record<Height, [number, number]> = { low: [0, 1 / 3], high: [2 / 3, 1], full: [0, 1] };
-
+/** Laser haben nur noch die Höhe „voll": Der Austritt an den Wänden geht über die ganze Wandhöhe. */
 function drawLasers(ctx: Ctx, g: Game) {
   for (const l of g.lasers) {
     const warning = l.warn > 0;
@@ -211,25 +208,14 @@ function drawLasers(ctx: Ctx, g: Game) {
       ctx.lineTo(ARENA, l.pos);
     }
     ctx.stroke();
-    // Austritt an den Wänden
-    const [from, to] = EMITTER_SPAN[l.height];
+    // Austritt an den Wänden, über die ganze Wandhöhe
     ctx.setLineDash([]);
     ctx.lineWidth = 9;
     for (const side of (l.vertical ? ['top', 'bottom'] : ['left', 'right']) as Side[]) {
       ctx.beginPath();
-      ctx.moveTo(...wallPoint(side, l.pos, from));
-      ctx.lineTo(...wallPoint(side, l.pos, to));
+      ctx.moveTo(...wallPoint(side, l.pos, 0));
+      ctx.lineTo(...wallPoint(side, l.pos, 1));
       ctx.stroke();
-    }
-    ctx.shadowBlur = 0;
-    ctx.font = '600 13px system-ui, sans-serif';
-    ctx.textBaseline = 'top';
-    if (l.vertical) {
-      ctx.textAlign = l.pos > ARENA - 150 ? 'right' : 'left';
-      ctx.fillText(HEIGHT_LABEL[l.height], l.pos + (l.pos > ARENA - 150 ? -8 : 8), 10);
-    } else {
-      ctx.textAlign = 'left';
-      ctx.fillText(HEIGHT_LABEL[l.height], 10, l.pos + (l.pos > ARENA - 30 ? -20 : 6));
     }
     ctx.restore();
   }
@@ -340,8 +326,32 @@ function drawHazards(ctx: Ctx, g: Game, time: number) {
   }
 }
 
+/**
+ * Der Bogen, den der Schlag eines Nahkämpfers trifft, am Boden angedeutet (wie der Kick der
+ * Figur): Er füllt sich beim Ausholen und blitzt im Moment des Schlags weiß auf.
+ */
+function drawMeleeArc(ctx: Ctx, e: Enemy) {
+  const def = MELEE[e.kind];
+  const m = e.melee;
+  if (!def || !m) return;
+  const strike = m.phase === 'recover' && m.t > def.recover - 0.1;
+  if (m.phase === 'recover' && !strike) return;
+  const progress = m.phase === 'windup' ? 1 - m.t / def.windup : 1;
+  const radius = ENEMIES[e.kind].r + def.reach + BASE_R;
+  ctx.beginPath();
+  ctx.moveTo(e.x, e.y);
+  ctx.arc(e.x, e.y, radius, m.angle - def.arc, m.angle + def.arc);
+  ctx.closePath();
+  ctx.fillStyle = strike ? 'rgba(255, 255, 255, 0.55)' : `rgba(255, 93, 115, ${0.08 + 0.32 * progress})`;
+  ctx.fill();
+  ctx.strokeStyle = `rgba(255, 93, 115, ${0.4 + 0.5 * progress})`;
+  ctx.lineWidth = 2;
+  ctx.stroke();
+}
+
 function drawEnemy(ctx: Ctx, g: Game, e: Enemy, time: number) {
   const def = ENEMIES[e.kind];
+  drawMeleeArc(ctx, e); // liegt am Boden, unter der Figur der Drohne
   if (enemySpriteReady(e.kind)) {
     drawEnemySprite(ctx, g, e, time);
     return;
@@ -368,7 +378,7 @@ function drawEnemy(ctx: Ctx, g: Game, e: Enemy, time: number) {
 
   if (fusing) {
     // Sprengradius der Sprengdrohne
-    circle(ctx, e.x, e.y, 80 * (1 - (e.fuse ?? 0) / BOMB_FUSE));
+    circle(ctx, e.x, e.y, BOMB_RADIUS * (1 - (e.fuse ?? 0) / BOMB_FUSE));
     ctx.strokeStyle = HEIGHT_COLOR.full;
     ctx.lineWidth = 2;
     ctx.stroke();
@@ -409,11 +419,11 @@ function drawEnemy(ctx: Ctx, g: Game, e: Enemy, time: number) {
     ctx.fillStyle = '#10131a';
     ctx.fill();
   }
-  if (e.hp < def.hp) {
+  if (e.hp < e.maxHp) {
     ctx.fillStyle = '#3a1820';
     ctx.fillRect(e.x - def.r, e.y - def.r - 9, def.r * 2, 4);
     ctx.fillStyle = ENEMY_COLOR[e.kind];
-    ctx.fillRect(e.x - def.r, e.y - def.r - 9, def.r * 2 * Math.max(0, e.hp / def.hp), 4);
+    ctx.fillRect(e.x - def.r, e.y - def.r - 9, def.r * 2 * Math.max(0, e.hp / e.maxHp), 4);
   }
 }
 
@@ -435,7 +445,7 @@ function drawBanana(ctx: Ctx, x: number, y: number, time: number) {
 
 /** Farbe der Explosion, solange es kein Bild gibt. */
 const BLAST_FALLBACK: Record<BlastKind, string> = {
-  grenade: '#ff9f43', barrel: '#ff5a36', mine: '#4dd8ff', bomb: '#c77dff',
+  grenade: '#ff9f43', barrel: '#ff5a36', mine: '#4dd8ff', bomb: '#c77dff', shield: '#6f8bff',
   turret: '#f0f0f0', wreck: '#9a9a9a', revive: '#5ce0c6',
 };
 
@@ -628,8 +638,49 @@ function drawBullet(ctx: Ctx, b: Bullet, x: number, y: number, time: number) {
 let shotOffset: [number, number] = [0, 0];
 const bulletStart = new WeakMap<Bullet, { x: number; y: number; life: number }>();
 
+/** Spuren am Boden: dunkle, unregelmäßige Brandflecken in der Größe des Sprengradius. */
+function drawMarks(ctx: Ctx, g: Game) {
+  for (const m of g.marks) {
+    // Die Form ergibt sich aus der Lage, damit ein Fleck bei jedem Bild gleich aussieht
+    const seed = m.x * 12.9898 + m.y * 78.233;
+    const noise = (i: number) => {
+      const v = Math.sin(seed + i * 91.7) * 43758.5453;
+      return v - Math.floor(v);
+    };
+    const points = 16;
+    const rim = Array.from({ length: points }, (_, i): [number, number] => {
+      const a = (i / points) * Math.PI * 2;
+      const r = m.r * (0.7 + 0.3 * noise(i));
+      return [m.x + Math.cos(a) * r, m.y + Math.sin(a) * r];
+    });
+    // weiche Kante: Kurve durch die Mitten zwischen den Randpunkten
+    const middle = (a: [number, number], b: [number, number]): [number, number] => [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+    ctx.beginPath();
+    ctx.moveTo(...middle(rim[points - 1], rim[0]));
+    for (let i = 0; i < points; i++) {
+      ctx.quadraticCurveTo(...rim[i], ...middle(rim[i], rim[(i + 1) % points]));
+    }
+    ctx.closePath();
+    const gradient = ctx.createRadialGradient(m.x, m.y, 0, m.x, m.y, m.r);
+    gradient.addColorStop(0, 'rgba(4, 3, 6, 0.8)');
+    gradient.addColorStop(0.6, 'rgba(6, 4, 8, 0.55)');
+    gradient.addColorStop(1, 'rgba(8, 6, 10, 0.25)');
+    ctx.fillStyle = gradient;
+    ctx.fill();
+    // ein paar Spritzer am Rand
+    ctx.fillStyle = 'rgba(6, 4, 8, 0.4)';
+    for (let i = 0; i < 6; i++) {
+      const a = noise(20 + i) * Math.PI * 2;
+      const d = m.r * (0.95 + 0.25 * noise(30 + i));
+      circle(ctx, m.x + Math.cos(a) * d, m.y + Math.sin(a) * d, 2 + 4 * noise(40 + i));
+      ctx.fill();
+    }
+  }
+}
+
 function drawScene(ctx: Ctx, g: Game, alpha: number, time: number) {
   drawRoom(ctx, g.room, { entry: g.room > 1, exit: g.phase !== 'play' });
+  drawMarks(ctx, g); // liegen über dem Bodenmuster und unter allem anderen
   for (const b of g.bananas) drawBanana(ctx, b.x, b.y, time);
   drawLasers(ctx, g);
   drawHazards(ctx, g, time);

@@ -25,7 +25,16 @@ export type EnemyKind = 'hunter' | 'gunner' | 'shield' | 'bomber' | 'heavy' | 'b
 export type ObjectiveType = 'collect' | 'clear' | 'survive' | 'destroy' | 'boss';
 
 /** Woher eine Explosion stammt – bestimmt ihr Aussehen. */
-export type BlastKind = 'grenade' | 'barrel' | 'mine' | 'bomb' | 'turret' | 'wreck' | 'revive';
+export type BlastKind = 'grenade' | 'barrel' | 'mine' | 'bomb' | 'shield' | 'turret' | 'wreck' | 'revive';
+
+/** Töne, die als Schleife laufen, solange ihre Bedingung gilt. Der Name ist der Eintrag in sounds.json. */
+export type AlarmKind = 'beep';
+
+/** Ein Dauerton, der gerade laufen soll. Die Logik meldet ihn, die Oberfläche spielt ihn. */
+export interface Alarm {
+  kind: AlarmKind;
+  urgency: number; // 0 = ruhig … 1 = höchste Dringlichkeit; der Ton wird schneller und höher
+}
 
 /** Was im Spiel gerade passiert ist – für Ton und Effekte. Die Logik sammelt, die Oberfläche spielt ab. */
 export type GameEvent =
@@ -81,12 +90,22 @@ export interface Input {
   swap: boolean; // Waffe wechseln
 }
 
+/** Nahkampf-Angriff eines Gegners: erst Ausholen, dann der Schlag, dann Erholen. */
+export interface Melee {
+  phase: 'windup' | 'recover';
+  t: number; // verbleibende Zeit der Phase
+  angle: number; // Richtung des Schlags, zu Beginn des Ausholens festgelegt
+}
+
 export interface Enemy {
   kind: EnemyKind;
+  level: number; // Level (Raumnummer), in dem er erschienen ist; bestimmt die Werte seiner Angriffe
   x: number;
   y: number;
   hp: number;
   maxHp: number;
+  speed: number; // px/s, beim Erscheinen festgelegt
+  damage: number; // bei Berührung, beim Erscheinen festgelegt
   mode: number; // Boss: zählt die Angriffe durch, um sie abzuwechseln
   pushX: number; // Rückstoß, klingt ab
   pushY: number;
@@ -101,8 +120,9 @@ export interface Enemy {
   laserCooldown: number;
   cooldown: number; // Zeit bis zum nächsten Angriff (Geschützdrohne)
   windup: number; // > 0: zielt gerade und feuert gleich
+  melee: Melee | null; // Nahkampf-Angriff, solange er läuft (Jagddrohne)
   fuse: number | null; // Sprengdrohne: Zeit bis zur Detonation
-  angle: number; // Blickrichtung (Schild-Mech)
+  angle: number; // Blickrichtung (Schilddrohne)
 }
 
 /** Geschoss der Figur. */
@@ -169,12 +189,21 @@ export interface Beam {
   t: number;
 }
 
+/** Spur am Boden, etwa der Brandfleck einer Explosion. Gilt nur im Raum, in dem sie entstanden ist. */
+export interface Mark {
+  x: number;
+  y: number;
+  r: number;
+}
+
 export interface Field {
   x: number;
   y: number;
   r: number;
   warn: number;
   active: number;
+  damage?: number; // an der Figur; das Feld merkt ihn sich beim Entstehen (Boss: skaliert). Fehlt er, gilt FIELD_DAMAGE.
+  enemyDamage?: number; // an Gegnern beim Auslösen; fehlt er, gilt FIELD_ENEMY_DAMAGE
 }
 
 export interface Mine {
@@ -301,6 +330,7 @@ export interface Game {
   turrets: Turret[];
   shots: Shot[];
   blasts: { x: number; y: number; r: number; t: number; kind: BlastKind }[];
+  marks: Mark[]; // Spuren am Boden; bleiben bis zum Wechsel in den nächsten Raum
   bananas: { x: number; y: number }[];
 
   // Punkte

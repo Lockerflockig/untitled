@@ -1,6 +1,6 @@
 # 01 – Gegner skalieren mit dem Level
 
-Status: offen
+Status: erledigt
 
 ## Ziel
 
@@ -78,8 +78,26 @@ Das ist die Grundlage dafür, jede Gegnerklasse danach einzeln zu überarbeiten
 
 ## Aufgefallen
 
-(vom umsetzenden Agenten auszufüllen)
+- Der Boss war zunächst auf Anweisung ausgenommen und ist nachträglich umgestellt worden, als klar war, dass nur Aufgabe 06 (Moveset) liegen bleibt. Sein Verhalten ist unverändert (fahren, Fächer, Bodenfelder abwechselnd); nur die Werte skalieren jetzt.
+- Die Sprengdrohne stand mit 225 → 290 px/s in der Tempo-Tabelle, wie hier vorgegeben. Aufgabe 03 ersetzt das durch „1,5 × Tempo der Figur"; in `ENEMIES.bomber` stehen `speed` und `speedMax` deshalb auf 0.
+- Die Ersatz-Lebensleiste in `src/render.ts` (ohne Sprite-Bilder) rechnete noch mit dem Grundwert des Typs statt mit `maxHp`; das war nötig, damit sie bei skalierten Gegnern stimmt, und ist geändert.
+- `Field.damage` und `Field.enemyDamage` sind optional: Bodenfelder aus dem Raum (und die von Hand gesetzten in den Prüfungen) lassen sie weg und nehmen die Konstanten `FIELD_DAMAGE` und `FIELD_ENEMY_DAMAGE`; nur die Felder des Bosses tragen skalierte Werte. Damit bleiben Gefahren aus dem Raum unverändert (Regel 6).
+- Der Boss-Raum ab Raum 8 enthält zusätzlich ein Geschütz (`roomPlan`: `n >= 8`). Das ist Bestand und unverändert; es fiel nur beim Prüfen der Boss-Geschosse auf, weil dessen Schüsse zuerst fallen.
+- Nebenwirkung von `npm install`: Es entsteht eine `package-lock.json`. Sie wird auf Wunsch der Stop-Prüfung mit eingecheckt; der Docker-Build nutzt sie nicht (`COPY package.json ./`).
 
 ## Übergabe an den Planer
 
-(vom umsetzenden Agenten auszufüllen: umgesetzte und bewusst ausgelassene Regeln; neue Felder, Funktionen und Konstanten mit Datei; geänderte Prüfungen; was im Browser angesehen wurde)
+**Umgesetzt:** Regeln 1–10, einschließlich Boss (Regel 8: `BOSS_HP_GROWTH` entfällt, Grundwert 615, Level 5 = 900, Level 10 = 1450). Die Vorgaben der offenen Fragen sind eingehalten (Tempo-Grenze je Typ; Angriffsfrequenz und Geschosstempo skalieren nicht; Gefahren im Raum skalieren nicht).
+
+**Neue Felder, Funktionen, Konstanten:**
+- `src/sim/core.ts`: `enemyStats(kind, level)` liefert `{ hp, speed, damage }`; `scaledDamage(base, level)` skaliert jeden Schaden, den ein Gegner verursacht; `HP_GROWTH` (1,10), `DAMAGE_GROWTH` (1,06), `SPEED_GROWTH` (1,03); `EnemyDef.speedMax` je Typ.
+- `src/sim/types.ts`: `Enemy.level`, `Enemy.speed`, `Enemy.damage`; `Field.damage` und `Field.enemyDamage` (optional).
+- `src/sim/enemies.ts`: `makeEnemy(kind, x, y, level = 1)`; erscheinende Gegner bekommen `g.room` als Level. Geschütz-Schuss, Boss-Fächer, Boss-Bodenfelder und die Explosion der Sprengdrohne laufen über `scaledDamage(…, e.level)`.
+- `src/sim/hazards.ts`: `FIELD_DAMAGE` und `FIELD_ENEMY_DAMAGE` sind exportiert; `stepHazards` liest den Schaden der Felder aus dem Feld.
+- `src/sim/game.ts`: `SPAWN_MIX` (ab welchem Level welcher Typ mit welchem Gewicht), `MAX_ENEMIES`, `SPAWN_EVERY`, `BOSS_ROOM`; `roomPlan` liest sie. Die Werte sind die heutigen. Der Boss entsteht mit `makeEnemy('boss', …, n)`.
+
+**Für Aufgabe 06:** Der Boss hat jetzt Level, `speed`, `damage` und `maxHp` wie jeder Gegner. Neue Fähigkeiten (Charge, Kegelschuss, Schwarm) lesen ihren Schaden mit `scaledDamage(base, e.level)`; Felder und Geschosse merken sich ihn beim Entstehen.
+
+**Geänderte Prüfungen:** „Zweiter Boss hat mehr Trefferpunkte" erwartete 1350 (+50 % je Boss) und erwartet jetzt den Wert nach der Formel (1450), weil Regel 8 genau das ändert. Sonst keine. Neu ist der Abschnitt „Skalierung mit dem Level" in `tests/rules.ts` (Grundwerte und Level 6, Tempo-Grenze, skalierte Berührung mit dem Schweren Mech, Geschützschuss Level 1 gegen 6, Level beim Erscheinen, Punkte/Radius/Masse, Typen ab Level, Mengen, Boss Level 5/10 samt Tempo und Berührungsschaden, Boss-Geschoss 19 → 25 und Boss-Bodenfeld 25 → 34 von Level 5 zu 10). Die Berührungsprüfung nutzt bewusst den Schweren Mech, weil die Jagddrohne in Aufgabe 04 keinen Berührungsschaden mehr hat.
+
+**Im Browser angesehen:** Rauchtest mit Chromium (Raum 6, Cyborg, vier Sekunden gespielt): startet, läuft, keine Konsolenfehler. Die Sprite-Bilder fehlen im Repository; gesehen wurden die Ersatzformen. Es gibt keine neue Anzeige. Nach der Boss-Umstellung zusätzlich Raum 5 und Raum 10 gestartet (der Rauchtest läuft dabei in den Boss hinein): beide ohne Konsolenfehler; in Raum 10 war die Figur (Cyborg, 80 TP) nach 3 s zerstört, weil die Berührung des Bosses dort 51 statt 30 abzieht – das ist die Skalierung und ein Balancing-Thema, kein Fehler.
