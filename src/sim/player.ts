@@ -310,7 +310,7 @@ export function stepBullets(g: Game) {
     b.y += b.vy * STEP;
     b.life -= STEP;
     const detonate = () => {
-      if (b.blast > 0) explode(g, b.x, b.y, b.blast, b.damage, GRENADE_PLAYER_DAMAGE, 'gun', b.action);
+      if (b.blast > 0) explode(g, b.x, b.y, b.blast, b.damage, GRENADE_PLAYER_DAMAGE, 'gun', b.action, 'grenade');
       return false;
     };
     if (b.life <= 0 || b.x < 0 || b.x > ARENA || b.y < 0 || b.y > ARENA) return detonate();

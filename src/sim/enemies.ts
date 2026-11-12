@@ -291,7 +291,7 @@ export function stepEnemies(g: Game) {
     if (!e.suicide) scoreKill(g, e);
     if (e.kind === 'bomber') {
       // Sprengdrohnen detonieren immer – auch abgeschossen oder weggekickt
-      explode(g, e.x, e.y, BOMB_RADIUS, BOMB_ENEMY_DAMAGE, BOMB_DAMAGE, 'env', e.action);
+      explode(g, e.x, e.y, BOMB_RADIUS, BOMB_ENEMY_DAMAGE, BOMB_DAMAGE, 'env', e.action, 'bomb');
       return false;
     }
     return e.kicked;

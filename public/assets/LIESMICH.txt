@@ -29,3 +29,15 @@ enemies/     hunter/   Free Robot Pixel Art Sprite Sheets, Swordsman:
 fx/          explosion.png: aus Free Flame Effects Sprite Pack, flame1/png,
              jedes zweite Bild (00, 02, ... 26) auf 64x64 verkleinert und
              nebeneinander zu einem Streifen von 896x64 gesetzt.
+
+             Optional eigene Bilder je Art der Explosion, gleiches Format
+             (quadratische Einzelbilder nebeneinander, Anzahl beliebig):
+               explosion-grenade.png   Granate
+               explosion-barrel.png    Fass
+               explosion-mine.png      Mine
+               explosion-bomb.png      Sprengdrohne
+               explosion-turret.png    zerstörtes Geschütz
+               explosion-wreck.png     Gegner beim Raumabschluss
+               explosion-revive.png    Druckwelle beim Extra-Leben
+             Fehlt eines, wird explosion.png je nach Art umgefärbt und
+             anders skaliert (Werte in src/sprites.ts, BLAST_LOOKS).

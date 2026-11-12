@@ -10,7 +10,7 @@
 //   Slide  → das "Hechten"-Bild aus der Tod-Animation
 // Die Waffe sitzt in der Hand der jeweiligen Animation und dreht sich zur Maus.
 
-import type { Enemy, EnemyKind, Game, WeaponId } from './sim/types.ts';
+import type { BlastKind, Enemy, EnemyKind, Game, WeaponId } from './sim/types.ts';
 import { ENEMIES, jumpHeight } from './sim/core.ts';
 import { BOMB_FUSE, BOSS_WINDUP, GUNNER_WINDUP } from './sim/enemies.ts';
 
@@ -322,17 +322,50 @@ export function drawEnemySprite(ctx: Ctx, g: Game, e: Enemy, time: number) {
 
 // --- Explosion --------------------------------------------------------------
 
-const EXPLOSION = { img: load('assets/fx/explosion.png'), frames: 14, size: 64 };
+// Jede Art von Explosion kann ein eigenes Bild haben: assets/fx/explosion-<art>.png,
+// ein Streifen quadratischer Einzelbilder nebeneinander (die Anzahl ergibt sich aus
+// Breite ÷ Höhe). Fehlt es, wird das gemeinsame explosion.png umgefärbt und
+// anders skaliert, damit man die Arten trotzdem auseinanderhält.
+
+interface BlastLook {
+  filter: string; // Umfärbung für das gemeinsame Bild (CSS-Filter)
+  scale: number; // Bildgröße im Verhältnis zum Wirkradius
+  foot: number; // wo im Bild der Zündpunkt sitzt (Anteil der Höhe von oben)
+}
+
+export const BLAST_LOOKS: Record<BlastKind, BlastLook> = {
+  grenade: { filter: 'none', scale: 2.6, foot: 0.78 },
+  barrel: { filter: 'hue-rotate(-25deg) saturate(1.6) brightness(0.9)', scale: 3.1, foot: 0.8 },
+  mine: { filter: 'hue-rotate(160deg) saturate(1.4) brightness(1.2)', scale: 2.4, foot: 0.7 },
+  bomb: { filter: 'hue-rotate(250deg) saturate(1.5)', scale: 2.8, foot: 0.75 },
+  turret: { filter: 'saturate(0.2) brightness(1.5)', scale: 2.2, foot: 0.7 },
+  wreck: { filter: 'grayscale(0.7) brightness(0.85)', scale: 2.4, foot: 0.78 },
+  revive: { filter: 'hue-rotate(120deg) saturate(1.3) brightness(1.3)', scale: 1.6, foot: 0.6 },
+};
+
+const EXPLOSION = load('assets/fx/explosion.png');
+const BLAST_KINDS = Object.keys(BLAST_LOOKS) as BlastKind[];
+const explosionByKind = Object.fromEntries(
+  BLAST_KINDS.map((kind) => [kind, load(`assets/fx/explosion-${kind}.png`)]),
+) as Record<BlastKind, HTMLImageElement>;
 
 /**
  * Zeichnet das Bild einer Explosion mit Radius r zum Fortschritt p (0..1).
- * Gibt false zurück, solange das Bild noch lädt.
+ * Gibt false zurück, solange kein Bild geladen ist.
  */
-export function drawExplosionSprite(ctx: Ctx, x: number, y: number, r: number, p: number) {
-  if (!loaded(EXPLOSION.img)) return false;
-  const frame = Math.min(EXPLOSION.frames - 1, Math.floor(p * EXPLOSION.frames));
-  const size = r * 2.6;
-  // Der Fuß der Explosion (im Bild bei etwa 78 % der Höhe) steht auf dem Zündpunkt
-  ctx.drawImage(EXPLOSION.img, frame * EXPLOSION.size, 0, EXPLOSION.size, EXPLOSION.size, x - size / 2, y - size * 0.78, size, size);
+export function drawExplosionSprite(ctx: Ctx, kind: BlastKind, x: number, y: number, r: number, p: number) {
+  const own = explosionByKind[kind];
+  const img = loaded(own) ? own : EXPLOSION;
+  if (!loaded(img)) return false;
+  const look = BLAST_LOOKS[kind];
+  const size = img.naturalHeight;
+  const frames = Math.max(1, Math.floor(img.naturalWidth / size));
+  const frame = Math.min(frames - 1, Math.floor(p * frames));
+  const drawn = r * look.scale;
+  ctx.save();
+  if (img === EXPLOSION) ctx.filter = look.filter;
+  // Der Fuß der Explosion steht auf dem Zündpunkt
+  ctx.drawImage(img, frame * size, 0, size, size, x - drawn / 2, y - drawn * look.foot, drawn, drawn);
+  ctx.restore();
   return true;
 }

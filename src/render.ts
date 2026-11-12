@@ -3,7 +3,7 @@
 // Farbcode für Höhen: niedrig = orange (springen), hoch = blau (ducken), voll = magenta (dashen).
 
 import { ARENA } from './sim/types.ts';
-import type { Enemy, Game, Height } from './sim/types.ts';
+import type { BlastKind, Enemy, Game, Height } from './sim/types.ts';
 import {
   BANANA_R, BARREL_R, BLAST_TIME, ENEMIES, MINE_R, PLAYER_R as BASE_R, TURRET_R, jumpHeight,
 } from './sim/core.ts';
@@ -433,6 +433,12 @@ function drawBanana(ctx: Ctx, x: number, y: number, time: number) {
   ctx.restore();
 }
 
+/** Farbe der Explosion, solange es kein Bild gibt. */
+const BLAST_FALLBACK: Record<BlastKind, string> = {
+  grenade: '#ff9f43', barrel: '#ff5a36', mine: '#4dd8ff', bomb: '#c77dff',
+  turret: '#f0f0f0', wreck: '#9a9a9a', revive: '#5ce0c6',
+};
+
 const PLAYER_BEAM_COLOR = '#b6ff6a';
 
 /** Schwerlaser: erst eine feine Ziellinie und ein wachsender Ladepunkt, dann der Strahl. */
@@ -585,10 +591,12 @@ function drawScene(ctx: Ctx, g: Game, alpha: number, time: number) {
       ctx.lineWidth = 3;
       ctx.stroke();
     }
-    if (!drawExplosionSprite(ctx, b.x, b.y, b.r, p)) {
+    if (!drawExplosionSprite(ctx, b.kind, b.x, b.y, b.r, p)) {
       circle(ctx, b.x, b.y, b.r * (0.4 + 0.6 * p));
-      ctx.fillStyle = `rgba(255, 159, 67, ${0.5 * (1 - p)})`;
+      ctx.fillStyle = BLAST_FALLBACK[b.kind];
+      ctx.globalAlpha = 0.5 * (1 - p);
       ctx.fill();
+      ctx.globalAlpha = 1;
     }
   }
 

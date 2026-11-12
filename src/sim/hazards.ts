@@ -201,7 +201,7 @@ export function stepHazards(g: Game) {
     }
     m.fuse -= STEP;
     if (m.fuse > 0) return true;
-    explode(g, m.x, m.y, MINE_RADIUS, MINE_ENEMY_DAMAGE, level === 'high' ? 0 : MINE_DAMAGE, 'env', m.action);
+    explode(g, m.x, m.y, MINE_RADIUS, MINE_ENEMY_DAMAGE, level === 'high' ? 0 : MINE_DAMAGE, 'env', m.action, 'mine');
     return false;
   });
 
@@ -210,7 +210,7 @@ export function stepHazards(g: Game) {
     if (b.fuse === null) return true;
     b.fuse -= STEP;
     if (b.fuse > 0) return true;
-    explode(g, b.x, b.y, BARREL_RADIUS, BARREL_ENEMY_DAMAGE, BARREL_DAMAGE, 'env', b.action);
+    explode(g, b.x, b.y, BARREL_RADIUS, BARREL_ENEMY_DAMAGE, BARREL_DAMAGE, 'env', b.action, 'barrel');
     return false;
   });
 
@@ -228,7 +228,7 @@ export function stepHazards(g: Game) {
     if (t.hp <= 0) {
       award(g, TURRET_POINTS, 1, t.x, t.y);
       if (g.plan.objective === 'destroy') g.progress++;
-      g.blasts.push({ x: t.x, y: t.y, r: 40, t: BLAST_TIME });
+      g.blasts.push({ x: t.x, y: t.y, r: 40, t: BLAST_TIME, kind: 'turret' });
       return false;
     }
     t.cooldown -= STEP;

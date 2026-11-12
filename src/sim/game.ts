@@ -147,7 +147,7 @@ export function newGame(stats: Stats, startRoom = 1): Game {
 function completeRoom(g: Game) {
   g.phase = 'exit';
   g.events.push('roomClear');
-  for (const e of g.enemies) g.blasts.push({ x: e.x, y: e.y, r: ENEMIES[e.kind].r * 1.6, t: BLAST_TIME });
+  for (const e of g.enemies) g.blasts.push({ x: e.x, y: e.y, r: ENEMIES[e.kind].r * 1.6, t: BLAST_TIME, kind: 'wreck' });
   clearRoom(g);
   award(g, POINTS_ROOM * (g.roomHit ? 1 : NO_HIT_BONUS), 1, ARENA / 2, ARENA / 2);
 }
@@ -230,7 +230,7 @@ export function step(g: Game, input: Input) {
       // Extra-Leben: an Ort und Stelle wieder da, mit Druckwelle und Schonzeit
       g.lives--;
       g.hp = g.stats.maxHp;
-      explode(g, g.x, g.y, 160, 60, 0, 'env', 0);
+      explode(g, g.x, g.y, 160, 60, 0, 'env', 0, 'revive');
       g.shield = REVIVE_SHIELD;
     } else {
       g.hp = 0;

@@ -17,6 +17,9 @@ export type ModuleId = 'magnet' | 'longdash' | 'heavyboot' | 'steady' | 'plating
 export type EnemyKind = 'hunter' | 'gunner' | 'shield' | 'bomber' | 'heavy' | 'boss';
 export type ObjectiveType = 'collect' | 'clear' | 'survive' | 'destroy' | 'boss';
 
+/** Woher eine Explosion stammt – bestimmt ihr Aussehen. */
+export type BlastKind = 'grenade' | 'barrel' | 'mine' | 'bomb' | 'turret' | 'wreck' | 'revive';
+
 /** Was im Spiel gerade passiert ist – für Ton und Effekte. Die Logik sammelt, die Oberfläche spielt ab. */
 export type GameEvent =
   | 'shoot' | 'charge' | 'beam' | 'dash' | 'kick' | 'jump' | 'slide'
@@ -240,7 +243,7 @@ export interface Game {
   barrels: Barrel[];
   turrets: Turret[];
   shots: Shot[];
-  blasts: { x: number; y: number; r: number; t: number }[];
+  blasts: { x: number; y: number; r: number; t: number; kind: BlastKind }[];
   bananas: { x: number; y: number }[];
 
   // Punkte
