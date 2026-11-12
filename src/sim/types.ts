@@ -17,9 +17,12 @@ export type ModuleId = 'magnet' | 'longdash' | 'heavyboot' | 'steady' | 'plating
 export type EnemyKind = 'hunter' | 'gunner' | 'shield' | 'bomber' | 'heavy' | 'boss';
 export type ObjectiveType = 'collect' | 'clear' | 'survive' | 'destroy' | 'boss';
 
+/** Woher eine Explosion stammt – bestimmt ihr Aussehen. */
+export type BlastKind = 'grenade' | 'barrel' | 'mine' | 'bomb' | 'turret' | 'wreck' | 'revive';
+
 /** Was im Spiel gerade passiert ist – für Ton und Effekte. Die Logik sammelt, die Oberfläche spielt ab. */
 export type GameEvent =
-  | 'shoot' | 'dash' | 'kick' | 'jump' | 'slide'
+  | 'shoot' | 'charge' | 'beam' | 'dash' | 'kick' | 'jump' | 'slide'
   | 'hit' | 'kill' | 'hurt' | 'explode' | 'pickup' | 'roomClear' | 'die';
 
 /** Werte der Figur für einen Run – ergeben sich aus Upgrades und gewähltem Set. */
@@ -87,10 +90,24 @@ export interface Bullet {
   vy: number;
   damage: number;
   life: number;
-  pierce: boolean;
   blast: number; // Explosionsradius, 0 = keiner
   action: number;
-  hit: Enemy[]; // schon durchschlagene Gegner
+}
+
+/**
+ * Strahl des Schwerlasers: lädt erst auf (charge), dann steht er ein paar
+ * Schritte lang (fire). Er geht von der Figur in Zielrichtung aus und folgt ihr.
+ */
+export interface PlayerBeam {
+  charge: number; // verbleibende Ladezeit, > 0 = baut sich noch auf
+  chargeTime: number; // gesamte Ladezeit, für die Darstellung
+  fire: number; // verbleibende Brenndauer
+  fireTime: number;
+  width: number; // halbe Breite
+  damage: number;
+  action: number;
+  length: number; // reicht bis zur Wand oder bis zum ersten Schild von vorn
+  hit: (Enemy | Turret)[]; // schon getroffen – jeder höchstens einmal je Strahl
 }
 
 /** Geschoss eines Gegners oder Geschützes; fliegt auf Höhe "hoch". */
@@ -212,6 +229,7 @@ export interface Game {
 
   // Welt
   bullets: Bullet[];
+  playerBeam: PlayerBeam | null;
   enemies: Enemy[];
   spawns: { x: number; y: number; t: number; kind: EnemyKind }[];
   spawnTimer: number;
@@ -225,7 +243,7 @@ export interface Game {
   barrels: Barrel[];
   turrets: Turret[];
   shots: Shot[];
-  blasts: { x: number; y: number; r: number; t: number }[];
+  blasts: { x: number; y: number; r: number; t: number; kind: BlastKind }[];
   bananas: { x: number; y: number }[];
 
   // Punkte

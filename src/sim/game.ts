@@ -78,6 +78,7 @@ function turretSpot(): { x: number; y: number } {
 
 function clearRoom(g: Game) {
   g.bullets = [];
+  g.playerBeam = null;
   g.enemies = [];
   g.spawns = [];
   g.lasers = [];
@@ -132,7 +133,7 @@ export function newGame(stats: Stats, startRoom = 1): Game {
     dashes: stats.dashCharges, dashRecharge: 0, dashTime: 0, dashing: false, dashX: 1, dashY: 0, invuln: 0,
     kickCooldown: 0, kickFlash: 0,
     weapon: 0, weaponCooldown: stats.weapons.map(() => 0),
-    bullets: [], enemies: [], spawns: [], spawnTimer: 0,
+    bullets: [], playerBeam: null, enemies: [], spawns: [], spawnTimer: 0,
     lasers: [], laserTimer: 0, beams: [], beamTimer: 0, fields: [], fieldTimer: 0,
     mines: [], barrels: [], turrets: [], shots: [], blasts: [], bananas: [],
     score: 0, streak: 0, streakTimer: 0, actionId: 0, comboAction: 0, comboKills: 0,
@@ -146,7 +147,7 @@ export function newGame(stats: Stats, startRoom = 1): Game {
 function completeRoom(g: Game) {
   g.phase = 'exit';
   g.events.push('roomClear');
-  for (const e of g.enemies) g.blasts.push({ x: e.x, y: e.y, r: ENEMIES[e.kind].r * 1.6, t: BLAST_TIME });
+  for (const e of g.enemies) g.blasts.push({ x: e.x, y: e.y, r: ENEMIES[e.kind].r * 1.6, t: BLAST_TIME, kind: 'wreck' });
   clearRoom(g);
   award(g, POINTS_ROOM * (g.roomHit ? 1 : NO_HIT_BONUS), 1, ARENA / 2, ARENA / 2);
 }
@@ -189,6 +190,7 @@ export function step(g: Game, input: Input) {
       g.dashTime = 0;
       g.dashing = false;
       g.bullets = [];
+      g.playerBeam = null;
     }
     return;
   }
@@ -228,7 +230,7 @@ export function step(g: Game, input: Input) {
       // Extra-Leben: an Ort und Stelle wieder da, mit Druckwelle und Schonzeit
       g.lives--;
       g.hp = g.stats.maxHp;
-      explode(g, g.x, g.y, 160, 60, 0, 'env', 0);
+      explode(g, g.x, g.y, 160, 60, 0, 'env', 0, 'revive');
       g.shield = REVIVE_SHIELD;
     } else {
       g.hp = 0;

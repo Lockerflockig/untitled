@@ -1,7 +1,7 @@
 // Gemeinsame Bausteine der Spiellogik: Gegner-Werte, Schaden, Punkte, Explosionen.
 
 import { ARENA } from './types.ts';
-import type { Enemy, EnemyKind, Game, Height, Level, Source } from './types.ts';
+import type { BlastKind, Enemy, EnemyKind, Game, Height, Level, Source } from './types.ts';
 
 export const PLAYER_R = 18;
 export const JUMP_TIME = 0.45; // Flugdauer; Richtung in der Luft nicht änderbar
@@ -120,9 +120,9 @@ export function scoreKill(g: Game, e: Enemy) {
  */
 export function explode(
   g: Game, x: number, y: number, radius: number,
-  enemyDamage: number, playerDamage: number, source: Source, action: number,
+  enemyDamage: number, playerDamage: number, source: Source, action: number, kind: BlastKind,
 ) {
-  g.blasts.push({ x, y, r: radius, t: BLAST_TIME });
+  g.blasts.push({ x, y, r: radius, t: BLAST_TIME, kind });
   g.events.push('explode');
   for (const e of g.enemies) {
     const dx = e.x - x;

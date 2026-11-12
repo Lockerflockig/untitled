@@ -59,6 +59,11 @@ function noise(f0: number, f1: number, duration: number, gain: number) {
 
 const SYNTH: Record<GameEvent, () => void> = {
   shoot: () => tone('square', 880, 220, 0.08, 0.35),
+  charge: () => tone('sawtooth', 180, 900, 0.35, 0.25),
+  beam: () => {
+    tone('sawtooth', 140, 60, 0.25, 0.6);
+    noise(6000, 800, 0.2, 0.5);
+  },
   dash: () => noise(4000, 600, 0.16, 0.5),
   kick: () => {
     tone('sine', 160, 45, 0.14, 1);

@@ -76,7 +76,7 @@ bei der Pistole fällt sie nur auf weite Distanz ins Gewicht.
 |---|---|
 | Pistole (Standard) | einzelne Schüsse, mittlere Rate |
 | Schrot | sechs Projektile im Fächer, kurze Reichweite |
-| Durchschuss | langsam, durchschlägt alle Gegner in einer Linie |
+| Schwerlaser | lädt kurz auf, dann brennt ein Strahl für einen Moment durch alle Gegner in einer Linie; hohe Abklingzeit, ein Schild-Mech von vorn hält ihn auf |
 | Granate | Flächenschaden beim Einschlag; verletzt die Figur nicht |
 
 ### Trefferpunkte und Leben **[fest]**
@@ -165,7 +165,7 @@ wenige Jagddrohnen. Jeder weitere Boss hat 50 % mehr Trefferpunkte.
 |---|---|
 | Grundwert | je Gegnertyp 100–400, Banane 50, Geschütz 150 |
 | Art | Schuss ×1 · Dash ×1,5 · Kick ×1,5 · Umgebung (Wand, Laser, Aufprall, Explosion) ×2 |
-| Mehrfach | +0,5 je weiterem Kill mit derselben Aktion (Kick samt Domino, Dash, Schrot, Durchschuss, Granate) |
+| Mehrfach | +0,5 je weiterem Kill mit derselben Aktion (Kick samt Domino, Dash, Schrot, Schwerlaser, Granate) |
 | Serie | +0,1 je Kill bis ×3; verfällt nach 4 s ohne Kill, fällt bei einem Treffer auf ×1 |
 | Raum | ×1 in Raum 1, +0,25 je weiterem Raum |
 | Raum geschafft | 500, ohne Treffer ×1,5 |
