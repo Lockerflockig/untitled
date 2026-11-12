@@ -13,7 +13,18 @@ erledigt, wenn ihre Abnahme-Prüfungen bestehen; dann den Kopf der Datei auf
 | Nr. | Aufgabe | Status |
 |---|---|---|
 | 01 | [Gegner skalieren mit dem Level](01-gegner-skalierung.md) | offen |
-| 02 | [Schilddrohne](02-schilddrohne.md) | offen, baut auf 01 auf |
+| 02 | [Schilddrohne](02-schilddrohne.md) | offen, baut auf 01 auf; Reflexion macht der Planer |
+
+## Dem Planer vorbehalten
+
+Teile, deren Umsetzung schwierig ist, setzt der Planer später selbst um. Sie
+sind in der jeweiligen Aufgabe mit **[Planer]** markiert und stehen hier
+gesammelt. Der umsetzende Agent baut sie nicht, sondern lässt die Stelle so
+vorbereitet, wie die Aufgabe es beschreibt.
+
+| Aufgabe | Teil | Warum schwierig |
+|---|---|---|
+| 02 | Reflexion von Projektilen am Schild (Regeln 4–9) | Geschosse der Figur und der Gegner laufen heute in zwei getrennten Listen mit getrennter Trefferlogik; für die Reflexion müssen beide gegen beide Seiten treffen können, ohne die bestehenden Regeln zu brechen |
 
 ## Was für jede Aufgabe gilt
 

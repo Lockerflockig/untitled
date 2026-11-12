@@ -24,7 +24,12 @@ Boden.
 2. Der Schild richtet sich langsam immer zur Figur aus, mit fester Drehrate. **Diese Drehrate skaliert nicht mit dem Level.** Der heutige Wert bleibt Startwert.
 3. Ist die Drohne gekickt und fliegt, wirkt der Schild nicht (wie bisher).
 
-### Reflexion
+### Reflexion **[Planer]**
+
+Diesen Abschnitt (Regeln 4–9) setzt der Planer selbst um. Für den umsetzenden
+Agenten heißt das: Der Schild schluckt Projektile vorerst weiter wie bisher.
+Die Regeln stehen hier, damit Explosion und Spuren dazu passen.
+
 4. **Der Schild reflektiert alle Projektile**, die ihn im Schildbogen treffen – die der Figur und die anderer Gegner (Geschützdrohne, Boss, Geschütze).
 5. Reflektiert wird an der Schildfläche: Die Flugrichtung wird an der Blickrichtung des Schilds gespiegelt. Tempo, Schaden und verbleibende Flugdauer bleiben.
 6. **Ein reflektiertes Projektil trifft danach jeden**, der im Weg ist: andere Gegner, die Figur, Geschütze, Minen, Fässer. Die Drohne, die es reflektiert hat, trifft es frühestens nach 0,15 s wieder.
@@ -67,14 +72,20 @@ Boden.
 
 ## Abnahme-Prüfungen (in `tests/rules.ts`)
 
+Für den umsetzenden Agenten:
+
+- Die Drehrate des Schilds ist in Level 1 und Level 20 gleich.
+- Eine zerstörte Schilddrohne verletzt die Figur in Reichweite mit dem skalierten Schaden und einen daneben stehenden Gegner ebenso; außerhalb des Radius passiert nichts.
+- Nach der Explosion liegt eine Spur an der Stelle; sie ist nach 60 s Spielzeit noch da, nach erfüllter Aufgabe noch da, im nächsten Raum weg.
+- Der Schwerlaser endet weiter am Schild.
+
+Für den Planer, zusammen mit der Reflexion:
+
 - Ein Pistolenschuss von vorn auf den Schild kommt zurück und trifft die stehende Figur; die Drohne nimmt keinen Schaden.
 - Derselbe Schuss von hinten trifft die Drohne normal.
 - Ein reflektierter Schuss tötet einen zweiten Gegner, der hinter der Figur steht; der Kill zählt ×2.
 - Ein Geschoss einer Geschützdrohne, das den Schild einer Schilddrohne trifft, wird reflektiert und kann die Geschützdrohne treffen.
-- Die Drehrate des Schilds ist in Level 1 und Level 20 gleich.
-- Eine zerstörte Schilddrohne verletzt die Figur in Reichweite mit dem skalierten Schaden und einen daneben stehenden Gegner ebenso; außerhalb des Radius passiert nichts.
-- Nach der Explosion liegt eine Spur an der Stelle; sie ist nach 60 s Spielzeit noch da, nach erfüllter Aufgabe noch da, im nächsten Raum weg.
-- Flammen werden am Schild nicht reflektiert; der Schwerlaser endet weiter am Schild.
+- Flammen werden am Schild nicht reflektiert.
 
 ## Offene Fragen
 
