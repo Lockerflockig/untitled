@@ -1,159 +1,26 @@
-// Sprites für Spielfigur und Gegner. Alle Figuren sind in Seitenansicht
+// Sprites für Gegner und Explosionen, dazu die gemeinsamen Helfer zum Laden.
+// Die Spielfigur steht in playerSprite.ts. Alle Figuren sind in Seitenansicht
 // gezeichnet und werden je nach Blickrichtung gespiegelt.
-//
-// Spielfigur (City Man): Das Paket hat nur Stehen, Gehen, Rennen, Schlag, Treffer
-// und Tod. Für alles andere stehen Notlösungen, bis es eigene Animationen gibt:
-//   Kick   → Schlag-Animation
-//   Sprung → ein Renn-Bild, angehoben über dem Schatten
-//   Dash   → ein Renn-Bild mit Nachbildern
-//   Ducken → gestauchtes Bild
-//   Slide  → das "Hechten"-Bild aus der Tod-Animation
-// Die Waffe sitzt in der Hand der jeweiligen Animation und dreht sich zur Maus.
 
-import type { BlastKind, Enemy, EnemyKind, Game, WeaponId } from './sim/types.ts';
-import { ENEMIES, jumpHeight } from './sim/core.ts';
+import type { BlastKind, Enemy, EnemyKind, Game } from './sim/types.ts';
+import { ENEMIES } from './sim/core.ts';
 import { BOMB_FUSE, BOSS_WINDUP, GUNNER_WINDUP } from './sim/enemies.ts';
 
 type Ctx = CanvasRenderingContext2D;
 interface Clip { file: string; frames: number; fps: number }
 
-function load(path: string) {
+export function load(path: string) {
   const img = new Image();
   img.src = path;
   return img;
 }
-const loaded = (img: HTMLImageElement) => img.complete && img.naturalWidth > 0;
+export const loaded = (img: HTMLImageElement) => img.complete && img.naturalWidth > 0;
 
-function shadow(ctx: Ctx, x: number, y: number, width: number, shrink = 0) {
+export function shadow(ctx: Ctx, x: number, y: number, width: number, shrink = 0) {
   ctx.beginPath();
   ctx.ellipse(x, y, width * (1 - 0.3 * shrink), width * 0.35 * (1 - 0.3 * shrink), 0, 0, Math.PI * 2);
   ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
   ctx.fill();
-}
-
-// --- Spielfigur -------------------------------------------------------------
-
-const FRAME = 128; // Kantenlänge eines Einzelbilds
-const ORIGIN_X = 60; // Spalte im Einzelbild, in der die Figur mittig steht
-const FEET = 12; // die Füße stehen so weit unter dem Mittelpunkt des Trefferkreises
-const JUMP_LIFT = 34;
-const KICK_ANIM_TIME = 0.28;
-
-// Waffe
-const GUN_SCALE = 1.8;
-const GRIP_X = 0.2; // Lage des Griffs im Waffenbild, als Anteil von Breite und Höhe
-const GRIP_Y = 0.7;
-const SLIDE_HAND: [number, number] = [78, 112];
-
-// Wo die Hand in jedem Einzelbild sitzt (Pixel im 128er-Bild), aus den
-// hautfarbenen Pixeln der Sprites ausgemessen. Beim Rennen ist es jeweils die
-// vordere Hand. Ohne Eintrag (Schlag, Tod) wird keine Waffe gezeichnet.
-const HANDS: Partial<Record<string, [number, number][]>> = {
-  idle: [[56, 100], [56, 100], [56, 100], [56, 99], [56, 99], [56, 100]],
-  walk: [[57, 97], [57, 98], [61, 98], [63, 97], [65, 95], [65, 97], [63, 98], [61, 100], [60, 99], [59, 97]],
-  run: [[85, 82], [83, 77], [83, 76], [84, 83], [72, 92], [86, 81], [84, 75], [84, 75], [85, 83], [72, 93]],
-  hurt: [[60, 81], [59, 82], [58, 83]],
-  dead: [[78, 112], [78, 112], [78, 112], [78, 112], [78, 112]],
-};
-
-const PLAYER_CLIPS = {
-  idle: { file: 'Idle', frames: 6, fps: 6 },
-  walk: { file: 'Walk', frames: 10, fps: 12 },
-  run: { file: 'Run', frames: 10, fps: 14 },
-  attack: { file: 'Attack', frames: 4, fps: 14 },
-  hurt: { file: 'Hurt', frames: 3, fps: 12 },
-  dead: { file: 'Dead', frames: 5, fps: 8 },
-};
-type PlayerClip = keyof typeof PLAYER_CLIPS;
-
-const player = Object.fromEntries(
-  Object.entries(PLAYER_CLIPS).map(([name, c]) => [name, load(`assets/player/${c.file}.png`)]),
-) as Record<PlayerClip, HTMLImageElement>;
-
-const guns: Record<WeaponId, HTMLImageElement> = {
-  pistol: load('assets/guns/pistol.png'),
-  shotgun: load('assets/guns/shotgun.png'),
-  rail: load('assets/guns/rail.png'),
-  grenade: load('assets/guns/grenade.png'),
-};
-
-/** Erst wenn alle Bilder da sind, wird die Figur als Sprite gezeichnet. */
-export const spritesReady = () => Object.values(player).every(loaded);
-
-export function drawPlayerSprite(ctx: Ctx, g: Game, x: number, groundY: number, time: number) {
-  const speed = Math.hypot(g.vx, g.vy);
-  const height = jumpHeight(g);
-  const feetY = groundY + FEET;
-  // Blick folgt der Maus; im Slide zeigt die Figur in Rutschrichtung
-  const facing = g.sliding && Math.abs(g.vx) > 10 ? Math.sign(g.vx) : g.aimX >= 0 ? 1 : -1;
-
-  // Zustand → Animation und Einzelbild
-  let clip: PlayerClip = 'idle';
-  let frame = -1; // -1 = Schleife
-  const kickElapsed = g.stats.kickCooldown - g.kickCooldown;
-  if (g.over) {
-    clip = 'dead';
-    frame = PLAYER_CLIPS.dead.frames - 1;
-  } else if (g.kickCooldown > 0 && kickElapsed < KICK_ANIM_TIME) {
-    clip = 'attack';
-    frame = Math.min(PLAYER_CLIPS.attack.frames - 1, Math.floor((kickElapsed / KICK_ANIM_TIME) * PLAYER_CLIPS.attack.frames));
-  } else if (g.hitFlash > 0) {
-    clip = 'hurt';
-    frame = Math.min(PLAYER_CLIPS.hurt.frames - 1, Math.floor((1 - g.hitFlash / 0.25) * PLAYER_CLIPS.hurt.frames));
-  } else if (g.air > 0 || g.dashing) {
-    clip = 'run';
-    frame = 2;
-  } else if (g.sliding) {
-    clip = 'dead';
-    frame = 3;
-  } else if (speed > 180) {
-    clip = 'run';
-  } else if (speed > 15) {
-    clip = 'walk';
-  }
-  if (frame < 0) {
-    const c = PLAYER_CLIPS[clip];
-    frame = Math.floor(time * c.fps) % c.frames;
-    // Läuft die Figur entgegen der Blickrichtung, spielt die Animation rückwärts
-    if (g.vx * facing < -15) frame = c.frames - 1 - frame;
-  }
-  const squash = g.ducking && !g.sliding ? 0.68 : 1;
-
-  shadow(ctx, x, feetY, 17, height);
-
-  const body = (px: number, py: number, alpha: number) => {
-    ctx.save();
-    ctx.globalAlpha = alpha;
-    ctx.translate(px, py - height * JUMP_LIFT);
-    ctx.scale(facing, squash);
-    ctx.drawImage(player[clip], frame * FRAME, 0, FRAME, FRAME, -ORIGIN_X, -FRAME + 1, FRAME, FRAME);
-    ctx.restore();
-  };
-
-  if (g.dashing) {
-    for (let i = 3; i >= 1; i--) body(x - g.dashX * i * 26, feetY - g.dashY * i * 26, 0.28 - i * 0.07);
-  }
-  let alpha = 1;
-  if (g.shield > 0) alpha = Math.floor(time * 12) % 2 ? 0.35 : 0.9;
-  else if (g.invuln > 0) alpha = 0.6;
-  body(x, feetY, alpha);
-
-  // Die Waffe sitzt in der Hand der Animation und macht deren Bewegung mit;
-  // sie dreht sich dabei zur Maus. Beim Kick und am Boden liegend entfällt sie.
-  const gun = guns[g.stats.weapons[g.weapon]];
-  const hands = HANDS[clip];
-  if (g.over || !hands || !loaded(gun)) return;
-  const [hx, hy] = g.sliding ? SLIDE_HAND : hands[frame];
-  const gw = gun.width * GUN_SCALE;
-  const gh = gun.height * GUN_SCALE;
-  ctx.save();
-  ctx.globalAlpha = alpha;
-  ctx.translate(x + facing * (hx - ORIGIN_X), feetY - height * JUMP_LIFT - (FRAME - 1 - hy) * squash);
-  ctx.rotate(Math.atan2(g.aimY, g.aimX));
-  if (g.aimX < 0) ctx.scale(1, -1); // sonst stünde die Waffe nach links auf dem Kopf
-  // Der Griff (unten links im Waffenbild) liegt auf der Hand
-  ctx.drawImage(gun, -gw * GRIP_X, -gh * GRIP_Y, gw, gh);
-  ctx.restore();
 }
 
 // --- Gegner -----------------------------------------------------------------
@@ -331,15 +198,19 @@ interface BlastLook {
   filter: string; // Umfärbung für das gemeinsame Bild (CSS-Filter)
   scale: number; // Bildgröße im Verhältnis zum Wirkradius
   foot: number; // wo im Bild der Zündpunkt sitzt (Anteil der Höhe von oben)
+  own?: { scale: number; foot: number }; // dieselben Werte für das eigene Bild, falls es anders geschnitten ist
 }
 
+// Eigene Bilder gibt es derzeit für Mine (flacher Ausbruch am Boden),
+// Sprengdrohne (runde Druckwelle), Geschütz (Zackenblitz) und Wrack
+// (Stichflamme, die sich einrollt). Granate und Fass nutzen die Feuerwolke.
 export const BLAST_LOOKS: Record<BlastKind, BlastLook> = {
   grenade: { filter: 'none', scale: 2.6, foot: 0.78 },
   barrel: { filter: 'hue-rotate(-25deg) saturate(1.6) brightness(0.9)', scale: 3.1, foot: 0.8 },
-  mine: { filter: 'hue-rotate(160deg) saturate(1.4) brightness(1.2)', scale: 2.4, foot: 0.7 },
-  bomb: { filter: 'hue-rotate(250deg) saturate(1.5)', scale: 2.8, foot: 0.75 },
-  turret: { filter: 'saturate(0.2) brightness(1.5)', scale: 2.2, foot: 0.7 },
-  wreck: { filter: 'grayscale(0.7) brightness(0.85)', scale: 2.4, foot: 0.78 },
+  mine: { filter: 'hue-rotate(160deg) saturate(1.4) brightness(1.2)', scale: 2.4, foot: 0.7, own: { scale: 2.6, foot: 0.5 } },
+  bomb: { filter: 'hue-rotate(250deg) saturate(1.5)', scale: 2.8, foot: 0.75, own: { scale: 2.4, foot: 0.5 } },
+  turret: { filter: 'saturate(0.2) brightness(1.5)', scale: 2.2, foot: 0.7, own: { scale: 3, foot: 0.5 } },
+  wreck: { filter: 'grayscale(0.7) brightness(0.85)', scale: 2.4, foot: 0.78, own: { scale: 3.2, foot: 0.9 } },
   revive: { filter: 'hue-rotate(120deg) saturate(1.3) brightness(1.3)', scale: 1.6, foot: 0.6 },
 };
 
@@ -357,7 +228,8 @@ export function drawExplosionSprite(ctx: Ctx, kind: BlastKind, x: number, y: num
   const own = explosionByKind[kind];
   const img = loaded(own) ? own : EXPLOSION;
   if (!loaded(img)) return false;
-  const look = BLAST_LOOKS[kind];
+  const base = BLAST_LOOKS[kind];
+  const look = img === own && base.own ? { ...base, ...base.own } : base;
   const size = img.naturalHeight;
   const frames = Math.max(1, Math.floor(img.naturalWidth / size));
   const frame = Math.min(frames - 1, Math.floor(p * frames));

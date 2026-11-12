@@ -12,9 +12,18 @@ Wer die Bilder hat, legt sie so ab:
 player/      City Man Pixel Art Character Sprite Sheets, Ordner City_men_3:
              Idle.png Walk.png Run.png Attack.png Hurt.png Dead.png
 
+chars/       cyborg/, biker/, punk/ – je Charakter neun Dateien:
+             aus Free Guns for Cyberpunk Characters, "1 Characters" (Körper
+             ohne Arme): Idle2 -> Idle.png, Walk2 -> Walk.png, Run2 -> Run.png,
+             Jump2 -> Jump.png, Sitdown2 -> Sitdown.png
+             aus demselben Paket, "3 Hands": 3.png -> Arm.png
+             aus Free 3 Cyberpunk Characters: <Name>_punch -> Punch.png,
+             <Name>_hurt -> Hurt.png, <Name>_death -> Death.png
+
 guns/        Free Guns for Cyberpunk Characters, Ordner "2 Guns":
              2_1.png -> pistol.png    8_1.png -> shotgun.png
              7_1.png -> rail.png      9_1.png -> grenade.png
+             4_1.png -> smg.png
 
 enemies/     hunter/   Free Robot Pixel Art Sprite Sheets, Swordsman:
                        Idle Hurt Dead Attack_1
@@ -41,3 +50,10 @@ fx/          explosion.png: aus Free Flame Effects Sprite Pack, flame1/png,
                explosion-revive.png    Druckwelle beim Extra-Leben
              Fehlt eines, wird explosion.png je nach Art umgefärbt und
              anders skaliert (Werte in src/sprites.ts, BLAST_LOOKS).
+
+             Derzeit verwendet, alle aus dem Free Flame Effects Sprite Pack,
+             auf den gemeinsamen Umriss zugeschnitten, je Bild 64x64:
+               explosion-bomb.png     flame2/png, alle 16 Bilder
+               explosion-mine.png     flame9/png, jedes zweite Bild (16)
+               explosion-turret.png   flame7/png1, jedes zweite Bild (12)
+               explosion-wreck.png    flame8/png, jedes zweite Bild (17)

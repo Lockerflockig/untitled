@@ -5,8 +5,9 @@ import { STEP } from '../src/sim/types.ts';
 import type { EnemyKind, Game, Input, Laser, Stats } from '../src/sim/types.ts';
 import { newGame, roomPlan, step } from '../src/sim/game.ts';
 import { makeEnemy } from '../src/sim/enemies.ts';
+import { describeOffer, rollOffers, takeOffer } from '../src/sim/loot.ts';
 import {
-  buyModule, buyUpgrade, buyWeapon, defaultSave, sanitize, statsFrom,
+  buyCharacter, buyUnlock, buyUpgrade, defaultSave, sanitize, selectCharacter, statsFrom,
 } from '../src/sim/meta.ts';
 
 let failed = 0;
@@ -353,6 +354,10 @@ console.log('--- Räume ---');
   check('Aufgabe erfüllt: Raum wird still, Bonus 500 × 1,5 ohne Treffer',
     g.phase === 'exit' && g.enemies.length === 0 && g.lasers.length === 0 && g.score === 750, { phase: g.phase, score: g.score });
   g.hp = 60;
+  const xBefore = g.x;
+  run(g, 0.5, () => ({ moveX: 1 }));
+  check('Offene Beute-Auswahl hält das Spiel an', g.offers.length === 3 && g.x === xBefore, { offers: g.offers.length });
+  takeOffer(g, 0);
   for (let i = 0; i < 3 / STEP && g.room === 1; i++) step(g, idle(g, { moveX: 1 }));
   check('Durch den Ausgang in Raum 2: Trefferpunkte bleiben, Punkte ×1,25',
     g.room === 2 && g.phase === 'play' && g.hp === 60 && g.x === 50 && g.plan.multiplier === 1.25 && g.plan.objective === 'clear',
@@ -379,26 +384,248 @@ console.log('--- Räume ---');
   check('Extra-Leben belebt einmal wieder, danach ist Schluss', revived.hp === 100 && revived.lives === 0 && !revived.over && g.over, { revived, over: g.over });
 }
 
-console.log('--- Shop und Sets ---');
+console.log('--- Loot ---');
+{
+  const g = quiet();
+  g.offers = [{ kind: 'weapon', id: 'pistol', levels: 1 }];
+  takeOffer(g, 0);
+  check('Standardwaffe aufwerten: Stufe 2, Schaden ×1,25', g.weaponLevels.pistol === 2 && g.stats.weaponDamage.pistol === 1.25 && g.offers.length === 0);
+  g.offers = [{ kind: 'weapon', id: 'shotgun', levels: 1 }];
+  takeOffer(g, 0);
+  check('Neue Waffe kommt auf den zweiten Platz', g.stats.weapons.join() === 'pistol,shotgun' && g.weaponCooldown.length === 2);
+  g.offers = [{ kind: 'weapon', id: 'grenade', levels: 2 }];
+  const text = describeOffer(g, g.offers[0]);
+  takeOffer(g, 0);
+  check('Weitere Waffe ersetzt die gefundene, nie die Standardwaffe; Boss-Beute bringt Stufe 2',
+    g.stats.weapons.join() === 'pistol,grenade' && g.weaponLevels.grenade === 2 && g.weaponLevels.shotgun === undefined
+    && text.tag.includes('ersetzt Schrot'), { weapons: g.stats.weapons, tag: text.tag });
+}
+{
+  const g = quiet();
+  const before = { ...g.stats };
+  for (const id of ['magnet', 'plating', 'longdash'] as const) {
+    g.offers = [{ kind: 'module', id, levels: 1 }];
+    takeOffer(g, 0);
+  }
+  g.offers = [{ kind: 'module', id: 'plating', levels: 1 }];
+  takeOffer(g, 0);
+  check('Module wirken und steigen in der Stufe', g.modules.length === 3 && g.stats.pickup === before.pickup + 40
+    && Math.abs(g.stats.damageTaken - 0.7) < 1e-9 && Math.abs(g.stats.dashTime - before.dashTime * 1.3) < 1e-9,
+    { pickup: g.stats.pickup, damageTaken: g.stats.damageTaken });
+  const offers = Array.from({ length: 40 }, () => rollOffers(g, 1)).flat();
+  check('Bei vollen Modul-Plätzen kommen keine neuen Module, nur Stufen',
+    offers.every((o) => o.kind === 'weapon' || g.modules.some((m) => m.id === o.id)) && offers.length === 120);
+  add(g, 'hunter', 20);
+  run(g, 0.05);
+  check('Panzerung Stufe 2: 15 Schaden werden zu 11', g.hp === 100 - 11, { hp: g.hp });
+}
+{
+  const g = quiet();
+  g.hp = 50;
+  g.pickups.push({ x: g.x + 200, y: g.y, kind: 'heal', t: 12 }, { x: g.x, y: g.y + 300, kind: 'heal', t: 0.5 });
+  run(g, 1, () => ({ moveX: 1 }));
+  check('Heilung: aufheben gibt 20 Trefferpunkte, liegengelassene verfällt', g.hp === 70 && g.pickups.length === 0, { hp: g.hp, pickups: g.pickups.length });
+  g.hp = g.stats.maxHp;
+  g.pickups.push({ x: g.x, y: g.y, kind: 'heal', t: 12 });
+  run(g, 0.2);
+  check('Heilung bleibt liegen, solange die Figur voll ist', g.pickups.length === 1);
+  let drops = 0;
+  for (let i = 0; i < 300; i++) {
+    const t = quiet(baseStats(), 6);
+    t.turrets.push({ x: 400, y: 30, hp: 0, cooldown: 9, hitFlash: 0, dashHit: false });
+    run(t, 0.02);
+    drops += t.pickups.length;
+  }
+  check('Zerstörte Geschütze lassen in etwa 60 % der Fälle Heilung fallen', drops > 140 && drops < 220, { drops });
+}
+
+console.log('--- Neue Waffen ---');
+{
+  const shot = (duck: boolean) => {
+    const g = quiet(baseStats({ weapons: ['sniper'] }));
+    const e = add(g, 'heavy', 300);
+    if (duck) run(g, 0.05, () => ({ duck: true }));
+    run(g, 0.4, () => ({ fire: true, duck }));
+    return e.hp;
+  };
+  check('Präzisionsgewehr: 70 Schaden, geduckt 105', shot(false) === 90 && shot(true) === 55, { stand: shot(false), duck: shot(true) });
+}
+{
+  const g = quiet(baseStats({ weapons: ['flamer'] }));
+  const near = add(g, 'heavy', 90);
+  const far = add(g, 'gunner', 330); // hält von sich aus Abstand
+  run(g, 1, () => ({ fire: true, duck: true }));
+  check('Flammenwerfer: Dauerschaden auf kurze Distanz, darüber hinaus nichts', near.hp < 130 && far.hp === 30, { near: near.hp, far: far.hp });
+}
+{
+  const g = quiet(baseStats({ weapons: ['chain'] }));
+  const [a, b, c] = [add(g, 'heavy', 150), add(g, 'heavy', 150, 110), add(g, 'heavy', 150, 220)];
+  run(g, 0.2, () => ({ fire: true, duck: true }));
+  check('Kettenblitz: springt weiter, jeder Sprung 30 % schwächer',
+    a.hp === 138 && Math.abs(b.hp - 144.6) < 0.01 && Math.abs(c.hp - 149.22) < 0.01 && g.arcs.length > 0, { a: a.hp, b: b.hp, c: c.hp });
+}
+{
+  const g = quiet(baseStats({ weapons: ['pulse'] }));
+  g.x = g.prevX = 560;
+  const e = add(g, 'hunter', 120);
+  step(g, idle(g, { fire: true }));
+  run(g, 0.5);
+  check('Impulskanone: schleudert weg, Aufprall an der Wand zählt', e.hp === 40 - 4 - 30, { hp: e.hp, x: Math.round(e.x) });
+}
+{
+  const g = quiet(baseStats({ weapons: ['saw'] }));
+  g.x = g.prevX = 560;
+  const e = add(g, 'heavy', 120);
+  run(g, 0.05, () => ({ fire: true, duck: true }));
+  run(g, 1.2);
+  check('Sägeblatt: geht hindurch, prallt ab und trifft auf dem Rückweg erneut', e.hp === 160 - 56, { hp: e.hp });
+}
+
+console.log('--- Neue Module ---');
+{
+  const withModule = (id: Parameters<typeof takeOffer>[1] extends never ? never : string, levels = 1, stats = baseStats()) => {
+    const g = quiet(stats);
+    g.offers = [{ kind: 'module', id: id as never, levels }];
+    takeOffer(g, 0);
+    return g;
+  };
+  {
+    const g = withModule('doublejump');
+    step(g, idle(g, { jump: true }));
+    run(g, 0.3);
+    step(g, idle(g, { jump: true }));
+    run(g, 0.3);
+    const stillUp = g.air > 0;
+    step(g, idle(g, { jump: true }));
+    run(g, 0.3);
+    check('Doppelsprung: ein zweiter Sprung in der Luft, kein dritter', stillUp && g.air <= 0);
+  }
+  {
+    const slide = (g: Game) => {
+      run(g, 0.4, () => ({ moveX: 1 }));
+      const from = g.x;
+      run(g, 2.5, () => ({ duck: true }));
+      return g.x - from;
+    };
+    const plain = quiet();
+    plain.x = plain.prevX = 60;
+    const g = withModule('slider');
+    g.x = g.prevX = 60;
+    const e = add(g, 'heavy', 190);
+    const [short, long] = [slide(plain), slide(g)];
+    check('Gleitschuhe: Slide reicht weiter und macht 15 Schaden', long > short * 1.3 && e.hp === 145, { short: Math.round(short), long: Math.round(long), hp: e.hp });
+  }
+  {
+    const g = withModule('shieldgen');
+    g.guard = g.stats.guard;
+    g.streak = 3;
+    g.streakTimer = 4;
+    add(g, 'hunter', 20);
+    run(g, 0.05);
+    const first = { hp: g.hp, streak: g.streak };
+    run(g, 0.7);
+    check('Schildgenerator: fängt den ersten Treffer ab, der zweite sitzt', first.hp === 100 && first.streak === 3 && g.hp === 85, { first, hp: g.hp });
+  }
+  {
+    const g = withModule('blastkick');
+    g.x = g.prevX = 650;
+    const kicked = add(g, 'hunter', 40);
+    const bystander = add(g, 'heavy', 115, 60); // neben der Flugbahn, aber im Sprengradius an der Wand
+    step(g, idle(g, { kick: true }));
+    run(g, 0.4);
+    check('Sprengkick: Aufprall löst eine Explosion aus, die Umstehende trifft, die Figur nicht',
+      bystander.hp === 135 && g.hp === 100 && kicked.hp <= 0,
+      { bystander: bystander.hp, kicked: kicked.hp, hp: g.hp });
+  }
+  {
+    const chainTo = (g: Game) => {
+      g.x = g.prevX = 100;
+      add(g, 'hunter', 40);
+      const second = add(g, 'hunter', 130);
+      step(g, idle(g, { kick: true }));
+      run(g, 0.6);
+      return second.x - g.x;
+    };
+    const [plain, boosted] = [chainTo(quiet()), chainTo(withModule('chainreaction'))];
+    check('Kettenreaktion: der getroffene Gegner fliegt weiter', boosted > plain + 20, { plain: Math.round(plain), boosted: Math.round(boosted) });
+  }
+  {
+    const g = withModule('quickdraw');
+    step(g, idle(g, { fire: true }));
+    const cooling = g.weaponCooldown[0];
+    step(g, idle(g, { dash: true }));
+    check('Schnellzieher: Dash macht die Waffe sofort wieder bereit', cooling > 0 && g.weaponCooldown[0] === 0);
+  }
+  {
+    const g = withModule('adrenaline');
+    g.streak = 10;
+    g.streakTimer = 9;
+    run(g, 0.5, () => ({ moveX: 1 }));
+    check('Adrenalin: bei voller Serie 20 % schneller', Math.abs(g.vx - 360) < 0.5, { vx: g.vx });
+  }
+  {
+    const g = withModule('ricochet');
+    g.x = g.prevX = 700;
+    const behind = add(g, 'hunter', -150);
+    behind.angle = 0;
+    run(g, 0.05, () => ({ fire: true, duck: true }));
+    run(g, 0.5, () => ({ duck: true }));
+    check('Querschläger: der Schuss prallt von der Wand ab und trifft hinter der Figur', behind.hp === 20, { hp: behind.hp });
+  }
+}
+
+console.log('--- Drop-Vorrat ---');
+{
+  const save = defaultSave();
+  const offered = (s: typeof save) => {
+    const g = quiet(statsFrom(s));
+    return new Set(Array.from({ length: 200 }, () => rollOffers(g, 1)).flat().map((o) => o.id));
+  };
+  const before = offered(save);
+  save.coins = 2000;
+  const bought = buyUnlock(save, 'saw') && buyUnlock(save, 'blastkick') && !buyUnlock(save, 'saw') && !buyUnlock(save, 'pistol');
+  const after = offered(save);
+  check('Gesperrte Waffen und Module tauchen erst nach dem Freischalten als Beute auf',
+    bought && save.coins === 500 && !before.has('saw') && !before.has('blastkick') && after.has('saw') && after.has('blastkick') && !after.has('sniper'),
+    { coins: save.coins, before: [...before].length, after: [...after].length });
+  check('Freigeschaltetes übersteht Speichern und Laden', sanitize(JSON.parse(JSON.stringify(save))).unlocked.join() === 'saw,blastkick');
+}
+
+console.log('--- Shop und Charaktere ---');
 {
   const save = defaultSave();
   const basics = statsFrom(save);
-  check('Start nur mit Basics', basics.weapons.join() === 'pistol' && basics.dashCharges === 1 && basics.extraLives === 0 && save.modules.length === 0);
-  check('Ohne Guthaben kein Kauf', !buyUpgrade(save, 'speed') && !buyWeapon(save, 'shotgun') && !buyModule(save, 'magnet'));
+  check('Start nur mit dem Agenten und seiner Pistole', basics.character === 'agent' && basics.weapons.join() === 'pistol'
+    && basics.dashCharges === 1 && basics.extraLives === 0 && basics.stillSpread === 0);
+  check('Ohne Guthaben kein Kauf', !buyUpgrade(save, 'speed') && !buyCharacter(save, 'cyborg') && !selectCharacter(save, 'cyborg'));
   save.coins = 5000;
-  const bought = buyUpgrade(save, 'speed') && buyWeapon(save, 'shotgun') && buyWeapon(save, 'shotgun') && buyModule(save, 'magnet');
-  check('Kaufen zieht Guthaben ab', bought && save.coins === 5000 - 150 - 800 - 400 - 500 && save.upgrades.speed === 1 && save.weapons.shotgun === 1,
-    { coins: save.coins });
-  save.sets[0].secondary = 'shotgun';
-  save.sets[0].modules = ['magnet'];
-  const stats = statsFrom(save);
-  check('Set und Upgrades wirken auf die Werte', stats.weapons.join() === 'pistol,shotgun' && stats.speed === 315 && stats.pickup === 40
-    && stats.weaponDamage.shotgun === 1.2, stats);
+  const bought = buyUpgrade(save, 'speed') && buyCharacter(save, 'biker');
+  check('Kaufen zieht Guthaben ab und wählt den Charakter', bought && save.coins === 5000 - 150 - 2000 && save.character === 'biker'
+    && !buyCharacter(save, 'biker'), { coins: save.coins, character: save.character });
+  const biker = statsFrom(save);
+  check('Biker: Schrot, mehr Trefferpunkte, langsamer, stärkerer Kick', biker.weapons.join() === 'shotgun' && biker.maxHp === 130
+    && biker.speed === Math.round(315 * 0.9) && biker.kickForce === 2000, biker);
+  const stats = (id: 'cyborg' | 'punk') => statsFrom({ ...defaultSave(), characters: ['agent', id], character: id });
+  const cyborg = stats('cyborg');
+  const punk = stats('punk');
+  check('Cyborg: Schwerlaser, zwei Dash-Ladungen, weniger Trefferpunkte', cyborg.weapons.join() === 'rail' && cyborg.dashCharges === 2 && cyborg.maxHp === 80);
+  check('Punk: MP, schneller, längere Serie', punk.weapons.join() === 'smg' && punk.speed === 336 && punk.streakTime === 6 && punk.maxHp === 75);
+  check('Zurück zum Agenten wechseln', selectCharacter(save, 'agent') && statsFrom(save).weapons.join() === 'pistol');
   const back = sanitize(JSON.parse(JSON.stringify(save)));
   check('Speicherstand übersteht Speichern und Laden', JSON.stringify(back) === JSON.stringify(save));
-  const broken = sanitize({ coins: -5, upgrades: { speed: 99 }, sets: [{ primary: 'rail', secondary: 'rail', modules: ['plating', 'x'] }] });
-  check('Kaputter Speicherstand wird bereinigt', broken.coins === 0 && broken.upgrades.speed === 5 && broken.sets[0].primary === 'pistol'
-    && broken.sets[0].secondary === null && broken.sets[0].modules.length === 0, broken.sets[0]);
+  const old = sanitize({
+    coins: 700, upgrades: { speed: 99 }, weapons: { pistol: 0, shotgun: 2 }, modules: ['magnet'],
+    sets: [{ primary: 'shotgun', secondary: null, modules: ['magnet'] }], character: 'punk', characters: ['x'],
+  });
+  check('Alter Speicherstand: Guthaben und Upgrades bleiben, Waffen, Module und Sets fallen weg',
+    old.coins === 700 && old.upgrades.speed === 5 && old.character === 'agent' && old.characters.join() === 'agent'
+    && !('weapons' in old) && !('modules' in old) && !('sets' in old), old);
+}
+{
+  const g = quiet(baseStats({ weapons: ['smg'] }));
+  run(g, 1, () => ({ fire: true }));
+  check('MP: etwa elf Schüsse pro Sekunde', g.bullets.length + 0 >= 0 && Math.abs(g.events.filter((e) => e === 'shoot').length - 11) <= 1,
+    { shots: g.events.filter((e) => e === 'shoot').length });
 }
 
 console.log(failed === 0 ? '\nAlle Prüfungen bestanden.' : `\n${failed} Prüfung(en) fehlgeschlagen.`);

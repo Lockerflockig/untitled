@@ -1,14 +1,14 @@
-// Alles, was zwischen den Runs bleibt: Waffen, Module, Upgrades, Ausrüstungs-Sets
-// und der Speicherstand. Die Zahlen hier sind die Stellschrauben fürs Balancing.
+// Alles, was zwischen den Runs bleibt: Charaktere, Upgrades und der Speicherstand.
+// Dazu die Waffen- und Modul-Daten. Die Zahlen hier sind die Stellschrauben fürs
+// Balancing.
 
-import type { ModuleId, Stats, WeaponId } from './types.ts';
+import type { BulletLook, CharacterId, ModuleId, Stats, WeaponId } from './types.ts';
 
 // --- Waffen -----------------------------------------------------------------
 
 export interface WeaponDef {
   name: string;
   desc: string;
-  cost: number; // Freischalt-Preis
   cooldown: number;
   spread: number; // ± rad
   duckSpread: number; // Faktor auf die Streuung beim Ducken
@@ -19,50 +19,154 @@ export interface WeaponDef {
   blast: number; // Explosionsradius
   // Strahlenwaffe statt Projektil: Ladezeit, Brenndauer, halbe Breite (s, s, px)
   beam?: { charge: number; duration: number; width: number };
+  look?: BulletLook;
+  pierce?: boolean; // fliegt durch Gegner hindurch
+  bounces?: number; // prallt so oft von der Wand ab
+  push?: number; // schleudert Getroffene weg wie ein Kick
+  chain?: number; // springt auf so viele weitere Gegner über
+  hitR?: number; // zusätzlicher Trefferradius
+  duckDamage?: number; // Schadensfaktor beim Ducken
   multi: boolean; // kann mit einem Schuss mehrere treffen → zählt als Aktion für den Mehrfach-Aufschlag
 }
 
 export const WEAPONS: Record<WeaponId, WeaponDef> = {
   pistol: {
-    name: 'Pistole', desc: 'Einzelschüsse, mittlere Rate', cost: 0,
+    name: 'Pistole', desc: 'Einzelschüsse, mittlere Rate',
     cooldown: 0.3, spread: 0.03, duckSpread: 0, pellets: 1, damage: 20, speed: 900, life: 2,
     blast: 0, multi: false,
   },
+  smg: {
+    name: 'MP', desc: 'Hohe Feuerrate, wenig Schaden, streut',
+    cooldown: 0.09, spread: 0.1, duckSpread: 0.4, pellets: 1, damage: 7, speed: 950, life: 1.2,
+    blast: 0, multi: false,
+  },
   shotgun: {
-    name: 'Schrot', desc: 'Fächer, stark auf kurze Distanz', cost: 800,
+    name: 'Schrot', desc: 'Fächer, stark auf kurze Distanz',
     cooldown: 0.8, spread: 0.24, duckSpread: 0.6, pellets: 6, damage: 9, speed: 800, life: 0.4,
     blast: 0, multi: true,
   },
   rail: {
-    name: 'Schwerlaser', desc: 'Lädt auf, dann brennt ein Strahl durch alle in einer Linie', cost: 1200,
+    name: 'Schwerlaser', desc: 'Lädt auf, dann brennt ein Strahl durch alle in einer Linie',
     cooldown: 1.6, spread: 0, duckSpread: 0, pellets: 1, damage: 60, speed: 0, life: 0,
     blast: 0, multi: true,
     beam: { charge: 0.35, duration: 0.12, width: 9 },
   },
   grenade: {
-    name: 'Granate', desc: 'Landet am Fadenkreuz, Flächenschaden', cost: 1500,
+    name: 'Granate', desc: 'Landet am Fadenkreuz, Flächenschaden',
     cooldown: 1.2, spread: 0.04, duckSpread: 0.3, pellets: 1, damage: 50, speed: 520, life: 1.3,
-    blast: 90, multi: true,
+    blast: 90, multi: true, look: 'grenade',
+  },
+  sniper: {
+    name: 'Präzisionsgewehr', desc: 'Langsam, viel Schaden, keine Streuung; geduckt 50 % mehr',
+    cooldown: 1, spread: 0.004, duckSpread: 0, pellets: 1, damage: 70, speed: 1700, life: 2,
+    blast: 0, multi: false, look: 'tracer', duckDamage: 1.5,
+  },
+  flamer: {
+    name: 'Flammenwerfer', desc: 'Kurzer Kegel, Dauerschaden, geht durch Gegner',
+    cooldown: 0.05, spread: 0.22, duckSpread: 0.7, pellets: 1, damage: 3, speed: 420, life: 0.38,
+    blast: 0, multi: false, look: 'flame', pierce: true, hitR: 8,
+  },
+  chain: {
+    name: 'Kettenblitz', desc: 'Springt vom Ziel auf bis zu drei Gegner in der Nähe über',
+    cooldown: 0.55, spread: 0.02, duckSpread: 0, pellets: 1, damage: 22, speed: 1100, life: 1,
+    blast: 0, multi: true, look: 'bolt', chain: 3,
+  },
+  pulse: {
+    name: 'Impulskanone', desc: 'Kaum Schaden, schleudert Gegner weg wie ein Kick',
+    cooldown: 0.7, spread: 0, duckSpread: 0, pellets: 1, damage: 4, speed: 700, life: 0.6,
+    blast: 0, multi: true, look: 'pulse', pierce: true, push: 1100, hitR: 10,
+  },
+  saw: {
+    name: 'Sägeblatt', desc: 'Geht durch Gegner und prallt dreimal von der Wand ab',
+    cooldown: 0.9, spread: 0.02, duckSpread: 0, pellets: 1, damage: 28, speed: 620, life: 2.4,
+    blast: 0, multi: true, look: 'saw', pierce: true, bounces: 3, hitR: 6,
   },
 };
 
 export const WEAPON_IDS = Object.keys(WEAPONS) as WeaponId[];
-export const WEAPON_MAX_LEVEL = 3;
-export const weaponUpgradeCost = (level: number) => Math.round(400 * 1.7 ** level);
-export const weaponDamageFactor = (level: number) => 1 + 0.2 * level;
 
-// --- Module (passive Effekte für die Set-Plätze) ------------------------------
+// --- Module (passive Effekte; kommen künftig als Drops im Run) ---------------
 
-export const MODULES: Record<ModuleId, { name: string; desc: string; cost: number }> = {
-  magnet: { name: 'Magnet', desc: '+40 px Aufheb-Reichweite', cost: 500 },
-  longdash: { name: 'Nachbrenner', desc: 'Dash reicht 30 % weiter', cost: 700 },
-  heavyboot: { name: 'Schwerer Stiefel', desc: 'Kick mit 25 % mehr Wucht', cost: 700 },
-  steady: { name: 'Ruhige Hand', desc: 'Keine Streuung im Stand', cost: 500 },
-  plating: { name: 'Panzerung', desc: '20 % weniger Schaden', cost: 900 },
-  combo: { name: 'Taktgeber', desc: 'Serie hält 2 s länger', cost: 600 },
+export const MODULES: Record<ModuleId, { name: string; desc: string }> = {
+  magnet: { name: 'Magnet', desc: '+40 px Aufheb-Reichweite' },
+  longdash: { name: 'Nachbrenner', desc: 'Dash reicht 30 % weiter' },
+  heavyboot: { name: 'Schwerer Stiefel', desc: 'Kick mit 25 % mehr Wucht' },
+  steady: { name: 'Ruhige Hand', desc: 'Keine Streuung im Stand' },
+  plating: { name: 'Panzerung', desc: '20 % weniger Schaden' },
+  combo: { name: 'Taktgeber', desc: 'Serie hält 2 s länger' },
+  doublejump: { name: 'Doppelsprung', desc: 'Zweiter Sprung in der Luft, mit Richtungswechsel' },
+  slider: { name: 'Gleitschuhe', desc: 'Slide reicht weiter und macht Schaden' },
+  chainreaction: { name: 'Kettenreaktion', desc: 'Domino gibt den vollen Schwung weiter und macht mehr Schaden' },
+  blastkick: { name: 'Sprengkick', desc: 'Gekickte Gegner explodieren beim Aufprall' },
+  shieldgen: { name: 'Schildgenerator', desc: 'Fängt einen Treffer pro Raum ab' },
+  adrenaline: { name: 'Adrenalin', desc: 'Schneller, je höher die Serie' },
+  ricochet: { name: 'Querschläger', desc: 'Schüsse prallen von der Wand ab' },
+  quickdraw: { name: 'Schnellzieher', desc: 'Ein Dash setzt die Abklingzeit der Waffe zurück' },
 };
 export const MODULE_IDS = Object.keys(MODULES) as ModuleId[];
-export const MODULE_SLOTS = 2;
+
+// --- Drop-Vorrat ------------------------------------------------------------
+
+/** Was von Anfang an als Beute auftauchen kann. */
+export const BASE_POOL: (WeaponId | ModuleId)[] = [
+  'pistol', 'smg', 'shotgun', 'rail', 'grenade',
+  'magnet', 'longdash', 'heavyboot', 'steady', 'plating', 'combo',
+];
+
+/** Alles Übrige schaltet man im Shop für den Vorrat frei. */
+export const UNLOCKS: { id: WeaponId | ModuleId; kind: 'weapon' | 'module'; cost: number }[] = [
+  ...WEAPON_IDS.filter((id) => !BASE_POOL.includes(id)).map((id) => ({ id, kind: 'weapon' as const, cost: 900 })),
+  ...MODULE_IDS.filter((id) => !BASE_POOL.includes(id)).map((id) => ({ id, kind: 'module' as const, cost: 600 })),
+];
+
+// --- Charaktere -------------------------------------------------------------
+
+export interface CharacterDef {
+  name: string;
+  cost: number; // 0 = von Anfang an da
+  weapon: WeaponId; // feste Standardwaffe
+  trait: string; // Eigenheit, für die Anzeige
+  profile: string; // Grundwerte in Worten, für die Anzeige
+  /** Wendet Eigenheit und Grundwerte auf die Werte aus den Upgrades an. */
+  apply: (s: Stats) => void;
+}
+
+export const CHARACTERS: Record<CharacterId, CharacterDef> = {
+  agent: {
+    name: 'Agent', cost: 0, weapon: 'pistol',
+    trait: 'Keine Streuung im Stand', profile: 'ausgewogen',
+    apply: (s) => {
+      s.stillSpread = 0;
+    },
+  },
+  cyborg: {
+    name: 'Cyborg', cost: 2500, weapon: 'rail',
+    trait: 'Eine Dash-Ladung mehr', profile: '20 % weniger Trefferpunkte',
+    apply: (s) => {
+      s.dashCharges += 1;
+      s.maxHp = Math.round(s.maxHp * 0.8);
+    },
+  },
+  biker: {
+    name: 'Biker', cost: 2000, weapon: 'shotgun',
+    trait: 'Kick mit 25 % mehr Wucht', profile: '30 % mehr Trefferpunkte, 10 % langsamer',
+    apply: (s) => {
+      s.kickForce *= 1.25;
+      s.maxHp = Math.round(s.maxHp * 1.3);
+      s.speed = Math.round(s.speed * 0.9);
+    },
+  },
+  punk: {
+    name: 'Punk', cost: 2000, weapon: 'smg',
+    trait: 'Serie hält 2 s länger', profile: '12 % schneller, 25 % weniger Trefferpunkte',
+    apply: (s) => {
+      s.streakTime += 2;
+      s.speed = Math.round(s.speed * 1.12);
+      s.maxHp = Math.round(s.maxHp * 0.75);
+    },
+  },
+};
+export const CHARACTER_IDS = Object.keys(CHARACTERS) as CharacterId[];
 
 // --- Upgrades ---------------------------------------------------------------
 
@@ -103,42 +207,28 @@ export const upgradeCost = (def: UpgradeDef, level: number) => Math.round(def.ba
 
 // --- Speicherstand ----------------------------------------------------------
 
-export interface Loadout {
-  primary: WeaponId;
-  secondary: WeaponId | null;
-  modules: ModuleId[];
-}
-
 export interface Save {
   coins: number;
   bestScore: number;
   bestRoom: number;
   upgrades: Record<UpgradeId, number>;
-  weapons: Partial<Record<WeaponId, number>>; // freigeschaltete Waffen mit Stufe
-  modules: ModuleId[]; // freigeschaltete Module
-  sets: Loadout[];
-  activeSet: number;
+  characters: CharacterId[]; // freigeschaltete Charaktere
+  character: CharacterId; // gewählt für den nächsten Run
+  unlocked: (WeaponId | ModuleId)[]; // zusätzlich für den Drop-Vorrat freigeschaltet
 }
 
-export const SET_COUNT = 3;
-
-/** Neuer Spielstand: nur die Basics – Pistole, ein Dash, Kick. */
+/** Neuer Spielstand: nur der Agent mit seiner Pistole. */
 export function defaultSave(): Save {
   const upgrades = {} as Record<UpgradeId, number>;
   for (const def of UPGRADES) upgrades[def.id] = 0;
-  return {
-    coins: 0,
-    bestScore: 0,
-    bestRoom: 0,
-    upgrades,
-    weapons: { pistol: 0 },
-    modules: [],
-    sets: Array.from({ length: SET_COUNT }, () => ({ primary: 'pistol' as WeaponId, secondary: null, modules: [] })),
-    activeSet: 0,
-  };
+  return { coins: 0, bestScore: 0, bestRoom: 0, upgrades, characters: ['agent'], character: 'agent', unlocked: [] };
 }
 
-/** Übernimmt gespeicherte Werte nur, soweit sie gültig sind. */
+/**
+ * Übernimmt gespeicherte Werte nur, soweit sie gültig sind. Früher gekaufte
+ * Waffen, Module und Sets werden dabei verworfen – sie kommen jetzt über
+ * Charaktere und Drops.
+ */
 export function sanitize(stored: unknown): Save {
   const save = defaultSave();
   if (!stored || typeof stored !== 'object') return save;
@@ -148,23 +238,9 @@ export function sanitize(stored: unknown): Save {
   save.bestScore = int(s.bestScore);
   save.bestRoom = int(s.bestRoom);
   for (const def of UPGRADES) save.upgrades[def.id] = int(s.upgrades?.[def.id], def.max);
-  for (const id of WEAPON_IDS) {
-    if (s.weapons && id in s.weapons) save.weapons[id] = int(s.weapons[id], WEAPON_MAX_LEVEL);
-  }
-  save.weapons.pistol ??= 0;
-  save.modules = MODULE_IDS.filter((m) => Array.isArray(s.modules) && s.modules.includes(m));
-  const owned = (id: unknown): id is WeaponId => typeof id === 'string' && id in save.weapons;
-  save.sets = save.sets.map((fallback, i) => {
-    const set = Array.isArray(s.sets) ? s.sets[i] : undefined;
-    if (!set) return fallback;
-    const primary = owned(set.primary) ? set.primary : 'pistol';
-    return {
-      primary,
-      secondary: owned(set.secondary) && set.secondary !== primary ? set.secondary : null,
-      modules: save.modules.filter((m) => Array.isArray(set.modules) && set.modules.includes(m)).slice(0, MODULE_SLOTS),
-    };
-  });
-  save.activeSet = int(s.activeSet, SET_COUNT - 1);
+  save.characters = CHARACTER_IDS.filter((id) => id === 'agent' || (Array.isArray(s.characters) && s.characters.includes(id)));
+  if (save.characters.includes(s.character as CharacterId)) save.character = s.character as CharacterId;
+  save.unlocked = UNLOCKS.map((u) => u.id).filter((id) => Array.isArray(s.unlocked) && s.unlocked.includes(id));
   return save;
 }
 
@@ -202,22 +278,25 @@ export function buyUpgrade(save: Save, id: UpgradeId) {
   return true;
 }
 
-/** Schaltet eine Waffe frei oder stuft eine vorhandene hoch. */
-export function buyWeapon(save: Save, id: WeaponId) {
-  const level = save.weapons[id];
-  if (level === undefined) {
-    if (!pay(save, WEAPONS[id].cost)) return false;
-    save.weapons[id] = 0;
-    return true;
-  }
-  if (level >= WEAPON_MAX_LEVEL || !pay(save, weaponUpgradeCost(level))) return false;
-  save.weapons[id] = level + 1;
+/** Schaltet einen Charakter frei und wählt ihn aus. */
+export function buyCharacter(save: Save, id: CharacterId) {
+  if (save.characters.includes(id) || !pay(save, CHARACTERS[id].cost)) return false;
+  save.characters.push(id);
+  save.character = id;
   return true;
 }
 
-export function buyModule(save: Save, id: ModuleId) {
-  if (save.modules.includes(id) || !pay(save, MODULES[id].cost)) return false;
-  save.modules.push(id);
+/** Nimmt eine Waffe oder ein Modul in den Drop-Vorrat auf. */
+export function buyUnlock(save: Save, id: WeaponId | ModuleId) {
+  const unlock = UNLOCKS.find((u) => u.id === id);
+  if (!unlock || save.unlocked.includes(id) || !pay(save, unlock.cost)) return false;
+  save.unlocked.push(id);
+  return true;
+}
+
+export function selectCharacter(save: Save, id: CharacterId) {
+  if (!save.characters.includes(id)) return false;
+  save.character = id;
   return true;
 }
 
@@ -225,27 +304,41 @@ export function buyModule(save: Save, id: ModuleId) {
 
 export function statsFrom(save: Save): Stats {
   const value = (id: UpgradeId) => UPGRADES.find((u) => u.id === id)!.value(save.upgrades[id]);
-  const set = save.sets[save.activeSet];
-  const has = (m: ModuleId) => set.modules.includes(m);
+  const character = CHARACTERS[save.character];
   const weaponDamage = {} as Record<WeaponId, number>;
-  for (const id of WEAPON_IDS) weaponDamage[id] = weaponDamageFactor(save.weapons[id] ?? 0);
-  return {
+  for (const id of WEAPON_IDS) weaponDamage[id] = 1;
+  const stats: Stats = {
+    character: save.character,
     speed: value('speed'),
-    pickup: value('pickup') + (has('magnet') ? 40 : 0),
+    pickup: value('pickup'),
     maxHp: value('maxHp'),
     extraLives: value('lives'),
     dashCharges: value('dashCharges'),
     dashIframes: value('dashIframes'),
     dashRecharge: value('dashRecharge'),
     dashDamage: value('dashDamage'),
-    dashTime: 0.11 * (has('longdash') ? 1.3 : 1),
-    kickForce: value('kickForce') * (has('heavyboot') ? 1.25 : 1),
+    dashTime: 0.11,
+    kickForce: value('kickForce'),
     kickCooldown: value('kickCooldown'),
     impact: value('impact'),
-    damageTaken: has('plating') ? 0.8 : 1,
-    stillSpread: has('steady') ? 0 : 1,
-    streakTime: 4 + (has('combo') ? 2 : 0),
-    weapons: set.secondary ? [set.primary, set.secondary] : [set.primary],
+    damageTaken: 1,
+    stillSpread: 1,
+    spread: 1,
+    streakTime: 4,
+    weapons: [character.weapon],
     weaponDamage,
+    pool: [...BASE_POOL, ...save.unlocked],
+    airJumps: 0,
+    slideFriction: 1,
+    slideDamage: 0,
+    transfer: 0.8,
+    kickBlast: 0,
+    kickBlastDamage: 0,
+    guard: 0,
+    streakSpeed: 0,
+    bounces: 0,
+    quickdraw: 0,
   };
+  character.apply(stats);
+  return stats;
 }

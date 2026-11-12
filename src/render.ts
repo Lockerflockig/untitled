@@ -3,7 +3,7 @@
 // Farbcode für Höhen: niedrig = orange (springen), hoch = blau (ducken), voll = magenta (dashen).
 
 import { ARENA } from './sim/types.ts';
-import type { BlastKind, Enemy, Game, Height } from './sim/types.ts';
+import type { BlastKind, Bullet, Enemy, Game, Height } from './sim/types.ts';
 import {
   BANANA_R, BARREL_R, BLAST_TIME, ENEMIES, MINE_R, PLAYER_R as BASE_R, TURRET_R, jumpHeight,
 } from './sim/core.ts';
@@ -11,9 +11,9 @@ import { BULLET_R, KICK_ARC, KICK_REACH } from './sim/player.ts';
 import { BOMB_FUSE, GUNNER_WINDUP, SPAWN_WARN } from './sim/enemies.ts';
 import { BEAM_LOCK, FIELD_WARN, LASER_WARN, SHOT_R, TURRET_HP } from './sim/hazards.ts';
 import { ENTRY_X, EXIT_HALF, EXIT_Y, RUN_OUT_TIME, SLIDE_TIME } from './sim/game.ts';
-import {
-  drawEnemySprite, drawExplosionSprite, drawPlayerSprite, enemySpriteReady, spritesReady,
-} from './sprites.ts';
+import { drawEnemySprite, drawExplosionSprite, enemySpriteReady } from './sprites.ts';
+import { drawPlayerSprite, muzzlePoint, spritesReady } from './playerSprite.ts';
+import { PICKUP_R } from './sim/loot.ts';
 
 // Der Raum ist von Wänden umgeben, die wie im Original nach außen "hochklappen":
 // die Innenkante ist der Boden, die Außenkante die Wandoberkante.
@@ -445,10 +445,12 @@ const PLAYER_BEAM_COLOR = '#b6ff6a';
 function drawPlayerBeam(ctx: Ctx, g: Game, time: number) {
   const pb = g.playerBeam;
   if (!pb) return;
-  const ox = g.x + g.aimX * (BASE_R + 6);
-  const oy = g.y + g.aimY * (BASE_R + 6);
-  const ex = g.x + g.aimX * pb.length;
-  const ey = g.y + g.aimY * pb.length;
+  // Der Strahl beginnt an der Mündung der gezeichneten Waffe und läuft parallel
+  // zur gerechneten Linie – also auf Höhe der Waffe statt am Boden.
+  const ox = g.x + g.aimX * (BASE_R + 6) + shotOffset[0];
+  const oy = g.y + g.aimY * (BASE_R + 6) + shotOffset[1];
+  const ex = g.x + g.aimX * pb.length + shotOffset[0];
+  const ey = g.y + g.aimY * pb.length + shotOffset[1];
   ctx.save();
   ctx.lineCap = 'round';
   if (pb.charge > 0) {
@@ -504,7 +506,7 @@ function drawPlayer(ctx: Ctx, g: Game, x: number, groundY: number, time: number)
     ctx.lineWidth = 1.5;
     ctx.stroke();
   }
-  if (spritesReady()) {
+  if (spritesReady(g.stats.character)) {
     drawPlayerSprite(ctx, g, x, groundY, time);
     ctx.restore();
     return;
@@ -554,11 +556,98 @@ function drawPlayer(ctx: Ctx, g: Game, x: number, groundY: number, time: number)
   ctx.restore();
 }
 
+/** Ein Geschoss der Figur; das Aussehen hängt von der Waffe ab. */
+function drawBullet(ctx: Ctx, b: Bullet, x: number, y: number, time: number) {
+  const speed = Math.hypot(b.vx, b.vy) || 1;
+  const dx = b.vx / speed;
+  const dy = b.vy / speed;
+  switch (b.look) {
+    case 'grenade':
+      circle(ctx, x, y, 7);
+      ctx.fillStyle = '#ff9f43';
+      ctx.fill();
+      break;
+    case 'tracer': // Präzisionsgewehr: langer, heller Strich
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(x - dx * 46, y - dy * 46);
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 3;
+      ctx.stroke();
+      break;
+    case 'flame': { // wächst und verblasst über die Flugzeit
+      const p = 1 - b.life / b.maxLife;
+      circle(ctx, x, y, 5 + 13 * p);
+      ctx.fillStyle = `rgba(255, ${Math.round(200 - 130 * p)}, 40, ${0.75 * (1 - p)})`;
+      ctx.fill();
+      break;
+    }
+    case 'bolt':
+      circle(ctx, x, y, 5);
+      ctx.fillStyle = '#9be7ff';
+      ctx.shadowColor = '#9be7ff';
+      ctx.shadowBlur = 12;
+      ctx.fill();
+      ctx.shadowBlur = 0;
+      break;
+    case 'pulse': { // Druckwelle: Bogen quer zur Flugrichtung
+      const angle = Math.atan2(dy, dx);
+      ctx.beginPath();
+      ctx.arc(x - dx * 16, y - dy * 16, 22, angle - 0.9, angle + 0.9);
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.85)';
+      ctx.lineWidth = 4;
+      ctx.stroke();
+      break;
+    }
+    case 'saw': { // rotierende Scheibe mit Zähnen
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(time * 30);
+      ctx.fillStyle = '#c9d1e0';
+      ctx.strokeStyle = '#1b1f29';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      for (let i = 0; i < 16; i++) {
+        const r = i % 2 ? 7 : 11;
+        ctx.lineTo(Math.cos((i / 16) * Math.PI * 2) * r, Math.sin((i / 16) * Math.PI * 2) * r);
+      }
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+      break;
+    }
+    default:
+      circle(ctx, x, y, BULLET_R);
+      ctx.fillStyle = '#fff3c4';
+      ctx.fill();
+  }
+}
+
+// Versatz zwischen gerechnetem Schuss-Ursprung und gezeichneter Mündung
+let shotOffset: [number, number] = [0, 0];
+const bulletStart = new WeakMap<Bullet, { x: number; y: number; life: number }>();
+
 function drawScene(ctx: Ctx, g: Game, alpha: number, time: number) {
   drawRoom(ctx, g.room, { entry: g.room > 1, exit: g.phase !== 'play' });
   for (const b of g.bananas) drawBanana(ctx, b.x, b.y, time);
   drawLasers(ctx, g);
   drawHazards(ctx, g, time);
+
+  // Drops am Boden: Heilung als grünes Kreuz; blinkt, bevor sie verschwindet
+  for (const p of g.pickups) {
+    if (p.t < 3 && Math.floor(time * 8) % 2) continue;
+    const bob = Math.sin(time * 4 + p.x) * 2;
+    circle(ctx, p.x, p.y + bob, PICKUP_R);
+    ctx.fillStyle = '#1f8f4d';
+    ctx.fill();
+    ctx.strokeStyle = '#b9f6ca';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(p.x - 2, p.y + bob - 7, 4, 14);
+    ctx.fillRect(p.x - 7, p.y + bob - 2, 14, 4);
+  }
 
   // Ankündigung: hier erscheint gleich ein Gegner
   for (const s of g.spawns) {
@@ -575,11 +664,40 @@ function drawScene(ctx: Ctx, g: Game, alpha: number, time: number) {
   // Weiter hinten stehende zuerst, damit sich die Figuren richtig überdecken
   for (const e of [...g.enemies].sort((a, b) => a.y - b.y)) drawEnemy(ctx, g, e, time);
 
+  // Geschosse starten an der Mündung der gezeichneten Waffe. Gerechnet wird ab
+  // der Mitte der Figur; der Versatz zur Mündung wird beim ersten Zeichnen
+  // gemerkt und begleitet das Geschoss – es fliegt auf Höhe der Waffe. Granaten
+  // sinken dabei zum Boden, damit sie am Fadenkreuz landen.
+  const playerX = g.prevX + (g.x - g.prevX) * alpha;
+  const playerY = g.prevY + (g.y - g.prevY) * alpha;
+  const muzzle = g.phase === 'transition' ? null : muzzlePoint(g, playerX, playerY, time);
+  shotOffset = muzzle
+    ? [muzzle[0] - (playerX + g.aimX * (BASE_R + 6)), muzzle[1] - (playerY + g.aimY * (BASE_R + 6))]
+    : [0, 0];
   for (const b of g.bullets) {
-    circle(ctx, b.x, b.y, b.blast > 0 ? 7 : BULLET_R);
-    ctx.fillStyle = b.blast > 0 ? '#ff9f43' : '#fff3c4';
-    ctx.fill();
+    let start = bulletStart.get(b);
+    if (!start) {
+      start = { x: shotOffset[0], y: shotOffset[1], life: b.life };
+      bulletStart.set(b, start);
+    }
+    const f = b.blast > 0 ? Math.max(0, b.life / start.life) : 1;
+    drawBullet(ctx, b, b.x + start.x * f, b.y + start.y * f, time);
   }
+  // Kettenblitz: gezackte Linie von Gegner zu Gegner, auf Höhe der Geschosse
+  ctx.strokeStyle = '#9be7ff';
+  ctx.lineWidth = 3;
+  for (const a of g.arcs) {
+    ctx.globalAlpha = Math.min(1, a.t / 0.08);
+    ctx.beginPath();
+    ctx.moveTo(a.x1, a.y1 - 20);
+    for (let i = 1; i < 5; i++) {
+      const p = i / 5;
+      ctx.lineTo(a.x1 + (a.x2 - a.x1) * p + Math.sin(i * 7 + a.x1) * 9, a.y1 + (a.y2 - a.y1) * p - 20 + Math.cos(i * 5 + a.y2) * 9);
+    }
+    ctx.lineTo(a.x2, a.y2 - 20);
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
   drawPlayerBeam(ctx, g, time);
 
   // Explosionen: Der Ring zeigt kurz den Wirkradius, darüber läuft die Sprite-Animation

@@ -1,7 +1,7 @@
 // Die Figur: Zielen, Laufen, Springen/Ducken/Slide, Dash, Waffen, Kick.
 
 import { STEP, ARENA } from './types.ts';
-import type { Game, Input } from './types.ts';
+import type { Enemy, Game, Input } from './types.ts';
 import {
   BARREL_R, ENEMIES, JUMP_TIME, MINE_R, PLAYER_R, TURRET_R, clampTo, damageEnemy, explode, rand,
 } from './core.ts';
@@ -41,7 +41,9 @@ function steer(g: Game, input: Input, moveLen: number) {
     const dirX = input.moveX / moveLen;
     const dirY = input.moveY / moveLen;
     const angle = Math.acos(Math.min(1, Math.max(-1, dirX * g.aimX + dirY * g.aimY)));
-    const topSpeed = g.stats.speed * (1 - (1 - BACKPEDAL) * (angle / Math.PI));
+    // Adrenalin: jede Stufe der Serie macht etwas schneller
+    const rush = 1 + g.stats.streakSpeed * Math.min(10, g.streak);
+    const topSpeed = g.stats.speed * rush * (1 - (1 - BACKPEDAL) * (angle / Math.PI));
     // Zwei getrennte Bremsen: Ändert sich die Laufrichtung (WASD), greift unten
     // ACCEL. Sinkt nur das Höchsttempo, weil sich der Blickwinkel ändert, gibt
     // das Tempolimit mit LOOK_BRAKE deutlich sanfter nach. Nach oben folgt das
@@ -104,6 +106,9 @@ export function stepPlayer(g: Game, input: Input) {
     g.dashY = g.aimY;
     g.events.push('dash');
     g.actionId++;
+    // Schnellzieher: Der Dash macht Waffe (und ab Stufe 2 den Kick) sofort wieder bereit
+    if (s.quickdraw >= 1) g.weaponCooldown.fill(0);
+    if (s.quickdraw >= 2) g.kickCooldown = 0;
     for (const e of g.enemies) e.dashHit = false;
     for (const t of g.turrets) t.dashHit = false;
   }
@@ -121,8 +126,21 @@ export function stepPlayer(g: Game, input: Input) {
     if (g.air > 0) {
       // In der Luft bleibt die Geschwindigkeit, wie sie beim Absprung war.
       g.air -= STEP;
+      // Doppelsprung: neuer Sprung aus der Luft, auf Wunsch in eine neue Richtung
+      if (input.jump && g.airJumpsLeft > 0) {
+        g.airJumpsLeft--;
+        g.air = JUMP_TIME;
+        g.events.push('jump');
+        if (moveLen > 0) {
+          const speed = Math.max(Math.hypot(g.vx, g.vy), s.speed * 0.8);
+          g.vx = (input.moveX / moveLen) * speed;
+          g.vy = (input.moveY / moveLen) * speed;
+        }
+      }
+      if (g.air <= 0) g.airJumpsLeft = s.airJumps;
     } else if (input.jump && !g.ducking) {
       g.air = JUMP_TIME;
+      g.airJumpsLeft = s.airJumps;
       g.events.push('jump');
     } else {
       if (!input.duck) {
@@ -132,13 +150,17 @@ export function stepPlayer(g: Game, input: Input) {
         // Ducken aus der Bewegung wird zum Slide
         g.ducking = true;
         g.sliding = Math.hypot(g.vx, g.vy) >= s.speed * SLIDE_MIN;
-        if (g.sliding) g.events.push('slide');
+        if (g.sliding) {
+          g.events.push('slide');
+          g.actionId++;
+          for (const e of g.enemies) e.slideHit = false;
+        }
       }
       if (g.sliding) {
         // Rutscht geradeaus und wird gleichmäßig langsamer – die Strecke
         // wächst also mit dem Tempo beim Abducken.
         const speed = Math.hypot(g.vx, g.vy);
-        const slower = speed - SLIDE_FRICTION * STEP;
+        const slower = speed - SLIDE_FRICTION * s.slideFriction * STEP;
         if (slower <= SLIDE_END) {
           g.sliding = false;
         } else {
@@ -181,7 +203,7 @@ export function stepPlayer(g: Game, input: Input) {
     g.events.push('shoot');
     // Streuung ist waffenabhängig; Ducken senkt sie
     const still = Math.hypot(g.vx, g.vy) < 20;
-    const spread = w.spread * (g.ducking ? w.duckSpread : 1) * (still ? s.stillSpread : 1);
+    const spread = w.spread * s.spread * (g.ducking ? w.duckSpread : 1) * (still ? s.stillSpread : 1);
     const action = w.multi ? ++g.actionId : 0;
     const base = Math.atan2(g.aimY, g.aimX);
     for (let i = 0; i < w.pellets; i++) {
@@ -192,11 +214,20 @@ export function stepPlayer(g: Game, input: Input) {
         y: g.y + g.aimY * (PLAYER_R + 6),
         vx: Math.cos(angle) * speed,
         vy: Math.sin(angle) * speed,
-        damage: w.damage * s.weaponDamage[id],
+        damage: w.damage * s.weaponDamage[id] * (g.ducking ? w.duckDamage ?? 1 : 1),
         // Sprenggeschosse landen dort, wo das Fadenkreuz steht (höchstens in voller Reichweite)
         life: w.blast > 0 ? Math.min(w.life, Math.max(0.05, (aimLen - PLAYER_R - 6) / speed)) : w.life,
+        maxLife: w.life,
         blast: w.blast,
         action,
+        look: w.look ?? 'bullet',
+        hitR: w.hitR ?? 0,
+        pierce: w.pierce ?? false,
+        hit: [],
+        // Querschläger gilt für alles außer Flammen und Sprenggeschossen
+        bounces: (w.bounces ?? 0) + (w.blast > 0 || w.look === 'flame' ? 0 : s.bounces),
+        push: w.push ?? 0,
+        chain: w.chain ?? 0,
       });
     }
   }
@@ -303,6 +334,32 @@ function stepPlayerBeam(g: Game) {
   if (pb.fire <= 0) g.playerBeam = null;
 }
 
+const CHAIN_RANGE = 170;
+const CHAIN_FALLOFF = 0.7; // jeder Sprung macht so viel vom vorigen Schaden
+
+/** Kettenblitz: springt vom getroffenen Gegner zum jeweils nächsten in Reichweite. */
+function chainFrom(g: Game, from: Enemy, damage: number, jumps: number, action: number) {
+  const struck = [from];
+  let last = from;
+  for (let i = 0; i < jumps; i++) {
+    let next: Enemy | null = null;
+    let best = CHAIN_RANGE;
+    for (const e of g.enemies) {
+      const dist = Math.hypot(e.x - last.x, e.y - last.y);
+      if (!e.dead && e.hp > 0 && !struck.includes(e) && dist < best) {
+        best = dist;
+        next = e;
+      }
+    }
+    if (!next) return;
+    g.arcs.push({ x1: last.x, y1: last.y, x2: next.x, y2: next.y, t: 0.15 });
+    damageEnemy(next, damage, 'gun', action);
+    damage *= CHAIN_FALLOFF;
+    struck.push(next);
+    last = next;
+  }
+}
+
 export function stepBullets(g: Game) {
   stepPlayerBeam(g);
   g.bullets = g.bullets.filter((b) => {
@@ -313,11 +370,21 @@ export function stepBullets(g: Game) {
       if (b.blast > 0) explode(g, b.x, b.y, b.blast, b.damage, GRENADE_PLAYER_DAMAGE, 'gun', b.action, 'grenade');
       return false;
     };
-    if (b.life <= 0 || b.x < 0 || b.x > ARENA || b.y < 0 || b.y > ARENA) return detonate();
+    if (b.life <= 0) return detonate();
+    if (b.x < 0 || b.x > ARENA || b.y < 0 || b.y > ARENA) {
+      if (b.bounces <= 0) return detonate();
+      // Abprall: zurück in den Raum, Richtung spiegeln; danach kann es dieselben Gegner erneut treffen
+      b.bounces--;
+      if (b.x < 0 || b.x > ARENA) b.vx = -b.vx;
+      if (b.y < 0 || b.y > ARENA) b.vy = -b.vy;
+      b.x = Math.min(ARENA, Math.max(0, b.x));
+      b.y = Math.min(ARENA, Math.max(0, b.y));
+      b.hit = [];
+    }
 
     for (const e of g.enemies) {
-      if (e.dead || e.hp <= 0) continue;
-      if (Math.hypot(e.x - b.x, e.y - b.y) >= ENEMIES[e.kind].r + BULLET_R) continue;
+      if (e.dead || e.hp <= 0 || b.hit.includes(e)) continue;
+      if (Math.hypot(e.x - b.x, e.y - b.y) >= ENEMIES[e.kind].r + BULLET_R + b.hitR) continue;
       const speed = Math.hypot(b.vx, b.vy);
       // Der Schild-Mech blockt, was von vorn kommt
       const fromFront = -(b.vx / speed) * Math.cos(e.angle) - (b.vy / speed) * Math.sin(e.angle) > SHIELD_BLOCK;
@@ -326,13 +393,23 @@ export function stepBullets(g: Game) {
         return detonate();
       }
       if (b.blast > 0) return detonate();
-      damageEnemy(e, b.damage, 'gun', b.action);
       g.events.push('hit');
-      if (!e.kicked) {
-        e.pushX = ((b.vx / speed) * 170) / ENEMIES[e.kind].mass;
-        e.pushY = ((b.vy / speed) * 170) / ENEMIES[e.kind].mass;
+      if (b.push > 0) {
+        // Impuls: schleudert wie ein Kick – Aufprall, Domino und Laser greifen danach wie gewohnt
+        damageEnemy(e, b.damage, 'kick', b.action);
+        e.pushX = ((b.vx / speed) * b.push) / ENEMIES[e.kind].mass;
+        e.pushY = ((b.vy / speed) * b.push) / ENEMIES[e.kind].mass;
+        e.kicked = true;
+      } else {
+        damageEnemy(e, b.damage, 'gun', b.action);
+        if (!e.kicked && b.look !== 'flame') {
+          e.pushX = ((b.vx / speed) * 170) / ENEMIES[e.kind].mass;
+          e.pushY = ((b.vy / speed) * 170) / ENEMIES[e.kind].mass;
+        }
       }
-      return false;
+      if (b.chain > 0) chainFrom(g, e, b.damage * CHAIN_FALLOFF, b.chain, b.action);
+      if (!b.pierce) return false;
+      b.hit.push(e);
     }
     for (const t of g.turrets) {
       if (Math.hypot(t.x - b.x, t.y - b.y) < TURRET_R + BULLET_R) {

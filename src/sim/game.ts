@@ -6,6 +6,7 @@ import { BANANA_R, BLAST_TIME, ENEMIES, PLAYER_R, award, explode, rand, spot } f
 import { stepBullets, stepPlayer } from './player.ts';
 import { makeEnemy, stepEnemies, stepSpawns } from './enemies.ts';
 import { TURRET_HP, stepHazards } from './hazards.ts';
+import { rollOffers, stepPickups } from './loot.ts';
 
 export const RUN_OUT_TIME = 0.5; // Raumwechsel: Figur rennt hinaus
 export const SLIDE_TIME = 0.7; // Raumwechsel: Kamera fährt in den nächsten Raum
@@ -100,6 +101,9 @@ function enterRoom(g: Game, n: number) {
   g.roomHit = false;
   g.roomKills = 0;
   clearRoom(g);
+  g.pickups = [];
+  g.arcs = [];
+  g.guard = g.stats.guard; // der Schildgenerator lädt in jedem Raum neu
   g.spawnTimer = 1.5;
   g.laserTimer = 4;
   g.beamTimer = 5;
@@ -122,7 +126,9 @@ function enterRoom(g: Game, n: number) {
 
 export function newGame(stats: Stats, startRoom = 1): Game {
   const g: Game = {
-    stats,
+    stats, baseStats: stats,
+    found: null, weaponLevels: { [stats.weapons[0]]: 1 }, modules: [], offers: [], pickups: [],
+    guard: 0, airJumpsLeft: 0, arcs: [],
     room: 1, plan: roomPlan(1), phase: 'play', transition: 0, exitFromX: 0, exitFromY: 0,
     progress: 0, roomHit: false,
     x: ARENA / 2, y: ARENA / 2, prevX: ARENA / 2, prevY: ARENA / 2,
@@ -150,13 +156,17 @@ function completeRoom(g: Game) {
   for (const e of g.enemies) g.blasts.push({ x: e.x, y: e.y, r: ENEMIES[e.kind].r * 1.6, t: BLAST_TIME, kind: 'wreck' });
   clearRoom(g);
   award(g, POINTS_ROOM * (g.roomHit ? 1 : NO_HIT_BONUS), 1, ARENA / 2, ARENA / 2);
+  // Beute: eine Auswahl aus drei Dingen; nach einem Boss bringt jedes zwei Stufen
+  g.offers = rollOffers(g, g.plan.objective === 'boss' ? 2 : 1);
 }
 
 export function step(g: Game, input: Input) {
-  if (g.over) return;
+  // Solange eine Beute-Auswahl offen ist, steht das Spiel
+  if (g.over || g.offers.length > 0) return;
   g.time += STEP;
   g.popups = g.popups.filter((p) => (p.t -= STEP) > 0);
   g.blasts = g.blasts.filter((b) => (b.t -= STEP) > 0);
+  g.arcs = g.arcs.filter((a) => (a.t -= STEP) > 0);
   if (g.streak > 0) {
     g.streakTimer -= STEP;
     if (g.streakTimer <= 0) g.streak = 0;
@@ -176,6 +186,8 @@ export function step(g: Game, input: Input) {
   }
 
   stepPlayer(g, input);
+
+  stepPickups(g);
 
   if (g.phase === 'exit') {
     stepBullets(g);

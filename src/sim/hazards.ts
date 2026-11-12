@@ -8,6 +8,7 @@ import type { Game, Height } from './types.ts';
 import {
   BLAST_TIME, ENEMIES, PLAYER_R, TURRET_R, award, damageEnemy, explode, heightHits, hurtPlayer, levelOf, rand,
 } from './core.ts';
+import { dropFrom } from './loot.ts';
 
 // Laser
 export const LASER_WARN = 1.0; // so lange kündigt sich ein Laser an
@@ -44,7 +45,7 @@ const BARREL_ENEMY_DAMAGE = 80;
 
 // Geschütz (schießt hoch)
 export const TURRET_HP = 60;
-const TURRET_COOLDOWN = 2;
+const TURRET_COOLDOWN = 1.5;
 const TURRET_SHOT_SPEED = 300;
 const TURRET_SHOT_DAMAGE = 15;
 const TURRET_POINTS = 150;
@@ -202,6 +203,7 @@ export function stepHazards(g: Game) {
     m.fuse -= STEP;
     if (m.fuse > 0) return true;
     explode(g, m.x, m.y, MINE_RADIUS, MINE_ENEMY_DAMAGE, level === 'high' ? 0 : MINE_DAMAGE, 'env', m.action, 'mine');
+    dropFrom(g, 'mine', m.x, m.y);
     return false;
   });
 
@@ -211,6 +213,7 @@ export function stepHazards(g: Game) {
     b.fuse -= STEP;
     if (b.fuse > 0) return true;
     explode(g, b.x, b.y, BARREL_RADIUS, BARREL_ENEMY_DAMAGE, BARREL_DAMAGE, 'env', b.action, 'barrel');
+    dropFrom(g, 'barrel', b.x, b.y);
     return false;
   });
 
@@ -229,6 +232,7 @@ export function stepHazards(g: Game) {
       award(g, TURRET_POINTS, 1, t.x, t.y);
       if (g.plan.objective === 'destroy') g.progress++;
       g.blasts.push({ x: t.x, y: t.y, r: 40, t: BLAST_TIME, kind: 'turret' });
+      dropFrom(g, 'turret', t.x, t.y);
       return false;
     }
     t.cooldown -= STEP;

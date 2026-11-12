@@ -12,8 +12,15 @@ export type Height = 'low' | 'high' | 'full';
 /** Auf welcher Höhe sich die Figur gerade befindet. */
 export type Level = 'low' | 'mid' | 'high';
 
-export type WeaponId = 'pistol' | 'shotgun' | 'rail' | 'grenade';
-export type ModuleId = 'magnet' | 'longdash' | 'heavyboot' | 'steady' | 'plating' | 'combo';
+export type WeaponId =
+  | 'pistol' | 'smg' | 'shotgun' | 'rail' | 'grenade'
+  | 'sniper' | 'flamer' | 'chain' | 'pulse' | 'saw';
+export type CharacterId = 'agent' | 'cyborg' | 'biker' | 'punk';
+export type ModuleId =
+  | 'magnet' | 'longdash' | 'heavyboot' | 'steady' | 'plating' | 'combo'
+  | 'doublejump' | 'slider' | 'chainreaction' | 'blastkick' | 'shieldgen' | 'adrenaline' | 'ricochet' | 'quickdraw';
+/** Wie ein Geschoss aussieht. */
+export type BulletLook = 'bullet' | 'grenade' | 'tracer' | 'flame' | 'bolt' | 'pulse' | 'saw';
 export type EnemyKind = 'hunter' | 'gunner' | 'shield' | 'bomber' | 'heavy' | 'boss';
 export type ObjectiveType = 'collect' | 'clear' | 'survive' | 'destroy' | 'boss';
 
@@ -27,6 +34,7 @@ export type GameEvent =
 
 /** Werte der Figur für einen Run – ergeben sich aus Upgrades und gewähltem Set. */
 export interface Stats {
+  character: CharacterId;
   speed: number;
   pickup: number; // zusätzliche Aufheb-Reichweite
   maxHp: number;
@@ -41,9 +49,23 @@ export interface Stats {
   impact: number; // Faktor auf Aufprallschaden
   damageTaken: number; // Faktor auf erlittenen Schaden
   stillSpread: number; // Faktor auf die Streuung im Stand
+  spread: number; // Faktor auf die Streuung insgesamt
   streakTime: number; // Sekunden ohne Kill, bis die Serie verfällt
   weapons: WeaponId[]; // Haupt- und ggf. Zweitwaffe
   weaponDamage: Record<WeaponId, number>; // Schadensfaktor je Waffe
+  pool: (WeaponId | ModuleId)[]; // was in diesem Run als Beute auftauchen kann
+
+  // Wirkungen von Modulen; ohne Modul neutral
+  airJumps: number; // zusätzliche Sprünge in der Luft
+  slideFriction: number; // Faktor auf die Reibung beim Slide
+  slideDamage: number; // Schaden an Gegnern, durch die der Slide geht
+  transfer: number; // Anteil des Schwungs, der beim Domino weitergeht
+  kickBlast: number; // Radius der Explosion beim Aufprall gekickter Gegner, 0 = keine
+  kickBlastDamage: number;
+  guard: number; // Treffer pro Raum, die der Schildgenerator abfängt
+  streakSpeed: number; // Tempo-Zuwachs je Kill in der Serie
+  bounces: number; // so oft prallen Geschosse von der Wand ab
+  quickdraw: number; // Stufe des Schnellziehers, 0 = aus
 }
 
 export interface Input {
@@ -75,6 +97,7 @@ export interface Enemy {
   action: number; // Nummer der Aktion (Kick, Dash, Schuss), die ihn zuletzt erwischt hat; 0 = keine
   hitFlash: number;
   dashHit: boolean; // vom laufenden Dash schon getroffen
+  slideHit: boolean; // vom laufenden Slide schon getroffen
   laserCooldown: number;
   cooldown: number; // Zeit bis zum nächsten Angriff (Geschützdrohne)
   windup: number; // > 0: zielt gerade und feuert gleich
@@ -92,6 +115,14 @@ export interface Bullet {
   life: number;
   blast: number; // Explosionsradius, 0 = keiner
   action: number;
+  look: BulletLook;
+  maxLife: number; // Flugdauer beim Abschuss, für die Darstellung
+  hitR: number; // zusätzlicher Trefferradius
+  pierce: boolean; // fliegt durch Gegner hindurch
+  hit: Enemy[]; // schon getroffen – bei pierce jeder nur einmal, bis zum nächsten Abprall
+  bounces: number; // so oft prallt es noch von der Wand ab
+  push: number; // schleudert Getroffene weg wie ein Kick, 0 = nein
+  chain: number; // springt auf so viele weitere Gegner über
 }
 
 /**
@@ -185,8 +216,34 @@ export interface RoomPlan {
   multiplier: number; // Raum-Multiplikator auf alle Punkte
 }
 
+/** Ein Angebot in der Auswahl nach einem Raum. */
+export interface Offer {
+  kind: 'weapon' | 'module';
+  id: WeaponId | ModuleId;
+  levels: number; // wie viele Stufen es bringt
+}
+
+/** Etwas, das am Boden liegt und aufgehoben werden kann. */
+export interface Pickup {
+  x: number;
+  y: number;
+  kind: 'heal';
+  t: number; // verbleibende Zeit, bis es verschwindet
+}
+
 export interface Game {
-  stats: Stats;
+  stats: Stats; // aktuelle Werte: Grundwerte plus Loot
+  baseStats: Stats; // Werte aus Charakter und Upgrades, zu Beginn des Runs
+
+  // Loot dieses Runs
+  found: WeaponId | null; // gefundene Zweitwaffe
+  weaponLevels: Partial<Record<WeaponId, number>>; // Stufen der gehaltenen Waffen
+  modules: { id: ModuleId; level: number }[];
+  offers: Offer[]; // offene Auswahl; solange sie offen ist, steht das Spiel
+  pickups: Pickup[];
+  guard: number; // verbleibende Schild-Ladungen in diesem Raum
+  airJumpsLeft: number;
+  arcs: { x1: number; y1: number; x2: number; y2: number; t: number }[]; // Blitze des Kettenblitzes
 
   // Raum
   room: number;

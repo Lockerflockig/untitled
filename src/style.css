@@ -112,5 +112,11 @@ button small { display: block; font-weight: 400; font-size: 11px; color: var(--m
 .item .name i { font-style: normal; color: #5fd1c6; letter-spacing: 1px; margin-left: 6px; font-size: 11px; }
 .item .detail { font-weight: 400; color: #c6cbd8; }
 .item .cost { color: var(--accent); font-variant-numeric: tabular-nums; min-width: 3.5em; text-align: right; }
+.keys.left { text-align: left; }
+.item.loot { padding: 14px; font-size: 15px; }
+.item.loot .cost { min-width: 9em; }
+#modules { text-transform: none; letter-spacing: 0; color: #5fd1c6; }
+.item.selected { border-color: var(--accent); }
+.item.selected .name { color: var(--accent); }
 .chip { padding: 8px 14px; font-size: 14px; }
 .chip.selected { border-color: var(--accent); color: var(--accent); }

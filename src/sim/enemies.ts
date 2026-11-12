@@ -19,13 +19,18 @@ const KICK_END = 150; // px/s, darunter fängt sich der Gegner wieder
 const WALL_IMPACT = 30; // Schaden beim Aufprall auf Wand oder Geschütz
 const ENEMY_IMPACT = 20; // Schaden für beide beim Aufprall auf einen anderen Gegner
 const IMPACT_MIN = 80; // px/s in Stoßrichtung, darunter zählt es nicht als Aufprall
-const IMPACT_TRANSFER = 0.8; // Anteil des Schwungs, der auf den getroffenen Gegner übergeht
+// Wie viel Schwung beim Domino weitergeht, steht in stats.transfer (normal 0,8).
+
+/** Sprengkick: Ein gekickter Gegner explodiert, wo er aufprallt. Die Figur bleibt verschont. */
+function impactBlast(g: Game, e: Enemy) {
+  if (g.stats.kickBlast > 0) explode(g, e.x, e.y, g.stats.kickBlast, g.stats.kickBlastDamage, 0, 'env', e.action, 'bomb');
+}
 
 // Geschützdrohne
 const GUNNER_RANGE: [number, number] = [260, 340]; // hält diesen Abstand
-const GUNNER_COOLDOWN = 1.6;
+const GUNNER_COOLDOWN = 1.1;
 export const GUNNER_WINDUP = 0.4; // zielt sichtbar, bevor sie feuert
-const GUNNER_SHOT_SPEED = 320;
+const GUNNER_SHOT_SPEED = 380;
 const GUNNER_SHOT_DAMAGE = 12;
 
 // Schild-Mech
@@ -39,7 +44,7 @@ const BOMB_DAMAGE = 30; // an der Figur
 const BOMB_ENEMY_DAMAGE = 40;
 
 // Boss (Panzer)
-const BOSS_COOLDOWN = 2.2;
+const BOSS_COOLDOWN = 1.6;
 export const BOSS_WINDUP = 0.7; // kündigt jeden Angriff an
 const BOSS_FAN = 7; // Geschosse pro Fächer
 const BOSS_FAN_STEP = 0.17; // rad zwischen zwei Geschossen
@@ -60,7 +65,7 @@ export function makeEnemy(kind: EnemyKind, x: number, y: number): Enemy {
   return {
     kind, x, y, hp: ENEMIES[kind].hp, maxHp: ENEMIES[kind].hp, mode: 0,
     pushX: 0, pushY: 0, kicked: false, dead: false, suicide: false,
-    lastHit: 'gun', action: 0, hitFlash: 0, dashHit: false, laserCooldown: 0,
+    lastHit: 'gun', action: 0, hitFlash: 0, dashHit: false, slideHit: false, laserCooldown: 0,
     cooldown: GUNNER_COOLDOWN, windup: 0, fuse: null, angle: 0,
   };
 }
@@ -204,6 +209,16 @@ export function stepEnemies(g: Game) {
         e.pushX = (g.dashX * KNOCKBACK) / def.mass;
         e.pushY = (g.dashY * KNOCKBACK) / def.mass;
       }
+    } else if (g.sliding && g.stats.slideDamage > 0 && !e.dead && dist < PLAYER_R + def.r + DASH_REACH) {
+      // Gleitschuhe: Der Slide trifft jeden Gegner einmal und schiebt ihn beiseite
+      if (!e.slideHit) {
+        e.slideHit = true;
+        damageEnemy(e, g.stats.slideDamage, 'dash', g.actionId);
+        if (!e.kicked) {
+          e.pushX = (-toX * KNOCKBACK) / def.mass;
+          e.pushY = (-toY * KNOCKBACK) / def.mass;
+        }
+      }
     } else if (!g.dashing && !e.kicked && def.damage > 0 && dist < PLAYER_R + def.r) {
       if (hurtPlayer(g, def.damage)) {
         e.pushX = (-toX * KNOCKBACK) / def.mass;
@@ -233,6 +248,7 @@ export function stepEnemies(g: Game) {
         damageEnemy(e, WALL_IMPACT * g.stats.impact, 'env');
         e.kicked = false;
         e.pushX = e.pushY = 0;
+        impactBlast(g, e);
       }
     }
     e.x = clampTo(e.x, def.r);
@@ -275,10 +291,11 @@ export function stepEnemies(g: Game) {
       flyer.pushX -= nx * along;
       flyer.pushY -= ny * along;
       flyer.kicked = Math.hypot(flyer.pushX, flyer.pushY) >= KICK_END;
-      const passed = along * IMPACT_TRANSFER * Math.min(1, massRatio);
+      const passed = along * g.stats.transfer * Math.min(1, massRatio);
       target.pushX = nx * passed;
       target.pushY = ny * passed;
       target.kicked = passed >= KICK_END;
+      impactBlast(g, flyer);
     }
   }
 

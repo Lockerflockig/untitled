@@ -22,13 +22,13 @@ export interface EnemyDef {
 }
 
 export const ENEMIES: Record<EnemyKind, EnemyDef> = {
-  hunter: { name: 'Jagddrohne', r: 14, hp: 40, speed: 130, damage: 15, mass: 1, points: 100 },
-  gunner: { name: 'Geschützdrohne', r: 14, hp: 30, speed: 90, damage: 0, mass: 1, points: 150 },
-  shield: { name: 'Schild-Mech', r: 17, hp: 60, speed: 100, damage: 20, mass: 1.5, points: 200 },
-  bomber: { name: 'Sprengdrohne', r: 13, hp: 20, speed: 190, damage: 0, mass: 0.8, points: 120 },
-  heavy: { name: 'Schwerer Mech', r: 25, hp: 160, speed: 70, damage: 30, mass: 4, points: 400 },
+  hunter: { name: 'Jagddrohne', r: 14, hp: 40, speed: 165, damage: 15, mass: 1, points: 100 },
+  gunner: { name: 'Geschützdrohne', r: 14, hp: 30, speed: 115, damage: 0, mass: 1, points: 150 },
+  shield: { name: 'Schild-Mech', r: 17, hp: 60, speed: 125, damage: 20, mass: 1.5, points: 200 },
+  bomber: { name: 'Sprengdrohne', r: 13, hp: 20, speed: 225, damage: 0, mass: 0.8, points: 120 },
+  heavy: { name: 'Schwerer Mech', r: 25, hp: 160, speed: 88, damage: 30, mass: 4, points: 400 },
   // Boss: so schwer, dass ein Kick ihn praktisch nicht bewegt
-  boss: { name: 'Panzer', r: 46, hp: 900, speed: 40, damage: 30, mass: 12, points: 2000 },
+  boss: { name: 'Panzer', r: 46, hp: 900, speed: 52, damage: 30, mass: 12, points: 2000 },
 };
 
 export const BLAST_TIME = 0.5; // so lange ist eine Explosion zu sehen
@@ -79,6 +79,13 @@ export function damageEnemy(e: Enemy, amount: number, source: Source, action = e
 /** Schaden an der Figur. Gibt zurück, ob er gewirkt hat (I-Frames und Schonzeit schützen). */
 export function hurtPlayer(g: Game, amount: number) {
   if (g.invuln > 0 || g.shield > 0 || g.phase !== 'play') return false;
+  if (g.guard > 0) {
+    // Schildgenerator: fängt den Treffer ab – kein Schaden, die Serie bleibt
+    g.guard--;
+    g.shield = SHIELD_TIME;
+    g.popups.push({ x: g.x, y: g.y, text: 'Schild', t: 0.9 });
+    return true;
+  }
   g.hp -= Math.round(amount * g.stats.damageTaken);
   g.shield = SHIELD_TIME;
   g.hitFlash = 0.25;

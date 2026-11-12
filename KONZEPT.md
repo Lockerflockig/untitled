@@ -188,6 +188,113 @@ eines Runs werden am Ende gutgeschrieben.
 Ein Set besteht aus Hauptwaffe, Zweitwaffe und zwei Modulen. Es gibt drei
 Sets; das gewählte gilt für den nächsten Run.
 
+## 9a. Charaktere und Drops (Entwurf, noch nicht gebaut)
+
+Deine Richtung **[fest]**: Waffen und Module hängen künftig zum Teil am
+Charakter und zum Teil an Drops im Run, statt frei im Shop gekauft und in Sets
+kombiniert zu werden. Dazu mehr Waffen und Module. Alles Weitere in diesem
+Abschnitt ist **[Vorschlag]** und würde Abschnitt 9 ersetzen.
+
+### Was wo herkommt
+
+| Quelle | Was sie liefert | Bleibt es? |
+|---|---|---|
+| Charakter | Startwaffe, eine Eigenheit, Grundwerte | dauerhaft freigeschaltet |
+| Drops im Run | weitere Waffen, Module, Stufen dafür | nur für diesen Run |
+| Shop | Charaktere, Grundwert-Upgrades, neue Einträge für den Drop-Vorrat | dauerhaft |
+
+Die Ausrüstungs-Sets entfallen; die Wahl vor dem Run ist der Charakter.
+
+### Charaktere
+
+| Charakter | Sprite | Startwaffe | Eigenheit | Grundwerte |
+|---|---|---|---|---|
+| Agent | City Man im Anzug | Pistole | keine Streuung im Stand | ausgewogen |
+| Cyborg | Cyborg | Schwerlaser | zwei Dash-Ladungen | weniger Trefferpunkte |
+| Biker | Biker | Schrot | Kick mit mehr Wucht | mehr Trefferpunkte, langsamer |
+| Punk | Punk | MP | Serie hält länger | schnell, wenig Trefferpunkte |
+
+Der Agent ist von Anfang an da, die anderen kosten Punkte. Die übrigen
+City-Man-Varianten wären Skins.
+
+### Drops
+
+- **Wann:** nach jedem geschafften Raum, vor dem Ausgang. Zur Wahl stehen drei Dinge, eines nimmt man mit. Nach einem Boss gibt es eine bessere Auswahl.
+- **Plätze:** zwei Waffen, drei Module. Ist alles voll, ersetzt der neue Fund einen alten.
+- **Doppelt gefunden:** hebt die Stufe (Waffe: mehr Schaden; Modul: stärkerer Effekt), bis Stufe 3.
+- **Vorrat:** Anfangs sind nur wenige Waffen und Module im Vorrat; weitere schaltet man im Shop frei.
+- Alternative: Gegner lassen Dinge fallen, die man im Kampf aufhebt. Das ist lebendiger, aber unruhiger und schwerer auszubalancieren.
+
+### Waffen (4 vorhanden, 6 neu)
+
+| Waffe | Charakter |
+|---|---|
+| Pistole | einzelne Schüsse, mittlere Rate |
+| Schrot | Fächer, kurze Reichweite |
+| Schwerlaser | lädt auf, Strahl durch alle in einer Linie |
+| Granate | landet am Fadenkreuz, Flächenschaden |
+| **MP** | hohe Feuerrate, wenig Schaden, Streuung wächst im Dauerfeuer |
+| **Präzisionsgewehr** | langsam, viel Schaden, keine Streuung; geduckt noch stärker |
+| **Flammenwerfer** | kurzer Kegel, Dauerschaden; lässt Fässer und Minen hochgehen |
+| **Kettenblitz** | springt vom Ziel auf bis zu drei Gegner in der Nähe über |
+| **Impulskanone** | kaum Schaden, stößt Gegner weg wie ein kleiner Kick auf Distanz |
+| **Sägeblatt** | prallt an Wänden ab und trifft auf dem Rückweg erneut |
+
+### Module (6 vorhanden, 8 neu)
+
+| Modul | Wirkung |
+|---|---|
+| Magnet, Nachbrenner, Schwerer Stiefel, Ruhige Hand, Panzerung, Taktgeber | wie bisher |
+| **Doppelsprung** | zweiter Sprung in der Luft, mit Richtungswechsel |
+| **Gleitschuhe** | Slide reicht weiter und macht Schaden |
+| **Kettenreaktion** | Domino gibt den vollen Schwung weiter und macht mehr Schaden |
+| **Sprengkick** | gekickte Gegner explodieren beim Aufprall |
+| **Schildgenerator** | fängt einen Treffer pro Raum ab |
+| **Adrenalin** | schneller, je höher die Serie |
+| **Querschläger** | Schüsse prallen einmal von der Wand ab |
+| **Schnellzieher** | ein Dash setzt die Abklingzeit der Waffe zurück |
+
+### Entschieden **[fest]**
+
+- Jeder Charakter hat eine feste Standardwaffe. Weitere Waffen verdient man im Run dazu; die Standardwaffe lässt sich im Run aufwerten.
+- Bereits gekaufte Waffen und Module im Speicherstand werden verworfen.
+- Zerstörte Gegenstände (Fässer, Geschütze und Ähnliches) haben eine eigene Drop-Liste. Sie können Heilung fallen lassen, später auch anderes.
+- Der Rest des Entwurfs wird zunächst so umgesetzt, einschließlich der Auswahl aus drei Dingen nach jedem Raum.
+- Gegner dürfen schneller sein und öfter angreifen.
+
+Reihenfolge: Explosionen, dann Charaktere, dann Loot, dann der Rest. Nach jedem Schritt wird getestet.
+
+Stand: Explosionen und Charaktere sind gebaut. Die vier Charaktere stehen im
+Menü unter „Charakter"; Waffen, Module und Sets sind aus dem Shop entfernt, die
+MP ist als fünfte Waffe dazugekommen.
+
+Loot ist ebenfalls gebaut: Nach jedem geschafften Raum steht eine Auswahl aus
+drei Dingen an (nach einem Boss bringt jedes zwei Stufen). Es gibt die
+Standardwaffe plus einen Platz für eine gefundene Zweitwaffe und drei
+Modul-Plätze; alles hat drei Stufen. Zerstörte Fässer, Minen und Geschütze
+lassen mit 35, 15 und 60 % Heilung (+20 Trefferpunkte) fallen. Geschosse und
+Strahl starten an der gezeichneten Waffe.
+
+Auch der Rest ist gebaut: fünf weitere Waffen (Präzisionsgewehr,
+Flammenwerfer, Kettenblitz, Impulskanone, Sägeblatt), acht weitere Module und
+der Drop-Vorrat im Shop – die neuen Waffen und Module tauchen erst als Beute
+auf, wenn man sie dort freigeschaltet hat. Gegner sind rund 25 % schneller,
+Geschützdrohne, Boss und Geschütze greifen öfter an.
+
+### Für später vorgemerkt (von dir genannt)
+
+- Das Loot-System weiter ausarbeiten.
+- Gegner skalieren mit dem Level.
+- Schild-Drohnen reflektieren Geschosse, statt sie nur zu schlucken.
+- Eigene Explosionen können auch der Figur schaden.
+- Minen eventuell als passive Fähigkeit.
+- **Überlegung, noch Konzeptphase:** Ducken/Slide und Springen durch andere Mechaniken ersetzen, zum Beispiel Parry statt Ducken und eine Fähigkeit statt Sprung. Vorher müssen Boss-Fähigkeiten, Angriffs-Animationen der Gegner und Ähnliches überarbeitet werden. Betroffen wären die drei Höhen-Ebenen samt aller Gefahren mit Höhe sowie die Module Doppelsprung und Gleitschuhe.
+
+### Für das spätere Balancing vorgemerkt
+
+- Das Spiel ist derzeit viel zu einfach; ein Run reicht, um alles gekauft zu haben. Preise müssen überarbeitet werden.
+- Räume ohne Kill-Aufgabe oder Zeitlimit lassen sich ausnutzen: Wer die Aufgabe nicht abschließt, kann endlos Punkte sammeln (×10 nur mit Dash war schnell erreicht). Die Aufgaben müssen überarbeitet werden.
+
 ## 10. Stil-Phase (als Nächstes)
 
 Stand:

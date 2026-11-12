@@ -1,17 +1,17 @@
 import { ARENA, STEP } from './sim/types.ts';
-import type { Game, Input, Level, ModuleId, WeaponId } from './sim/types.ts';
+import type { CharacterId, Game, Input, Level, ModuleId, WeaponId } from './sim/types.ts';
 import { levelOf, streakMultiplier } from './sim/core.ts';
 import { newGame, step } from './sim/game.ts';
 import {
-  MODULES, MODULE_IDS, MODULE_SLOTS, SET_COUNT, UPGRADES, WEAPONS, WEAPON_IDS, WEAPON_MAX_LEVEL,
-  buyModule, buyUpgrade, buyWeapon, loadSave, persist, statsFrom, upgradeCost, weaponDamageFactor,
-  weaponUpgradeCost,
+  CHARACTERS, CHARACTER_IDS, MODULES, UNLOCKS, UPGRADES, WEAPONS,
+  buyCharacter, buyUnlock, buyUpgrade, loadSave, persist, selectCharacter, statsFrom, upgradeCost,
 } from './sim/meta.ts';
+import { describeOffer, takeOffer } from './sim/loot.ts';
 import type { UpgradeId } from './sim/meta.ts';
 import { VIEW, WALL, draw } from './render.ts';
 import { initAudio, play, toggleMute } from './audio.ts';
 
-type Screen = 'menu' | 'shop' | 'sets' | 'playing' | 'paused' | 'over';
+type Screen = 'menu' | 'shop' | 'chars' | 'playing' | 'paused' | 'loot' | 'over';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const canvas = $<HTMLCanvasElement>('game');
@@ -21,8 +21,9 @@ const hud = {
   hpBar: $('hp-bar'), hpText: $('hp-text'), lives: $('lives'),
   room: $('room'), objective: $('objective'),
   score: $('score'), multiplier: $('multiplier'), level: $('level'),
-  dashes: $('dashes'), kickBar: $('kick-bar'), weapon: $('weapon'),
+  dashes: $('dashes'), kickBar: $('kick-bar'), weapon: $('weapon'), modules: $('modules'),
 };
+const ROMAN = ['', 'I', 'II', 'III'];
 const LEVEL_NAME: Record<Level, string> = { low: 'Boden', mid: 'Mitte', high: 'Oben' };
 
 // Zum Testen: ?raum=6 startet direkt in Raum 6. Solche Runs werden nicht gutgeschrieben.
@@ -39,8 +40,14 @@ if (testCoins > 0) {
   url.searchParams.delete('punkte');
   history.replaceState(null, '', url);
 }
+// Zum Testen: ?charakter=cyborg spielt einen Charakter, ohne ihn zu kaufen. Der
+// Speicherstand bleibt davon unberührt – nur die Werte für den Run werden so berechnet.
+const param = new URLSearchParams(location.search).get('charakter') as CharacterId | null;
+const TEST_CHARACTER = param && CHARACTER_IDS.includes(param) ? param : null;
+const runStats = () => statsFrom(TEST_CHARACTER ? { ...save, character: TEST_CHARACTER } : save);
+
 let screen: Screen = 'menu';
-let game: Game = newGame(statsFrom(save), TEST_ROOM);
+let game: Game = newGame(runStats(), TEST_ROOM);
 let banked = true; // ob die Punkte des aktuellen Runs schon gutgeschrieben sind
 
 // --- Eingabe --------------------------------------------------------------
@@ -67,12 +74,14 @@ window.addEventListener('keydown', (e) => {
     if (playing && !e.repeat) queued.swap = true;
   } else if (e.code === DUCK_KEY) {
     keys.add(e.code);
+  } else if (screen === 'loot' && /^(Digit|Numpad)[1-9]$/.test(e.code)) {
+    pickOffer(Number(e.code.slice(-1)) - 1);
   } else if (e.code === 'KeyM') {
     if (!e.repeat) toggleMute();
   } else if (e.code === 'Escape' || e.code === 'KeyP') {
     if (playing) setScreen('paused');
     else if (screen === 'paused') setScreen('playing');
-    else if (screen === 'shop' || screen === 'sets') setScreen('menu');
+    else if (screen === 'shop' || screen === 'chars') setScreen('menu');
   } else if (e.code === 'Enter' && !(e.target instanceof HTMLButtonElement)) {
     if (screen === 'paused') setScreen('playing');
     else if (screen === 'menu' || screen === 'over') start();
@@ -116,7 +125,7 @@ const held = (...codes: string[]) => (codes.some((c) => keys.has(c)) ? 1 : 0);
 
 function start() {
   initAudio(); // Browser erlauben Ton erst nach einer Nutzeraktion
-  game = newGame(statsFrom(save), TEST_ROOM);
+  game = newGame(runStats(), TEST_ROOM);
   banked = TEST_ROOM > 1;
   releaseAll();
   setScreen('playing');
@@ -142,7 +151,7 @@ function setScreen(next: Screen) {
 
 function render() {
   overlay.innerHTML = overlayHtml();
-  overlay.classList.toggle('wide', screen === 'shop' || screen === 'sets');
+  overlay.classList.toggle('wide', screen === 'shop' || screen === 'chars');
 }
 
 const CONTROLS = `<p class="keys">WASD: bewegen · Maus: zielen · Linksklick: schießen · Rechtsklick: Kick<br>
@@ -163,8 +172,8 @@ function overlayHtml(): string {
         ${wallet()}
         <button class="primary" data-action="start">Spielen</button>
         <div class="row">
+          <button data-action="chars">Charakter: ${CHARACTERS[TEST_CHARACTER ?? save.character].name}</button>
           <button data-action="shop">Shop</button>
-          <button data-action="sets">Ausrüstung</button>
         </div>
         <p class="keys">Bestwert: ${save.bestScore} Punkte · Raum ${save.bestRoom}</p>
         ${CONTROLS}`;
@@ -189,19 +198,21 @@ function overlayHtml(): string {
         </div>`;
     case 'shop':
       return shopHtml();
-    case 'sets':
-      return setsHtml();
+    case 'chars':
+      return charsHtml();
+    case 'loot':
+      return lootHtml();
   }
 }
 
-function shopHtml(): string {
-  const item = (attr: string, name: string, detail: string, price: number | null, extra = '') => `
-    <button class="item" ${attr} ${price === null || price > save.coins ? 'disabled' : ''}>
-      <span class="name">${name}${extra}</span>
-      <span class="detail">${detail}</span>
-      <span class="cost">${price === null ? '–' : price}</span>
-    </button>`;
+const item = (attr: string, name: string, detail: string, price: number | null, extra = '') => `
+  <button class="item" ${attr} ${price === null || price > save.coins ? 'disabled' : ''}>
+    <span class="name">${name}${extra}</span>
+    <span class="detail">${detail}</span>
+    <span class="cost">${price === null ? '–' : price}</span>
+  </button>`;
 
+function shopHtml(): string {
   const groups = [...new Set(UPGRADES.map((u) => u.group))].map((group) => `
     <h2>${group}</h2>
     ${UPGRADES.filter((u) => u.group === group).map((u) => {
@@ -211,65 +222,77 @@ function shopHtml(): string {
       return item(`data-upgrade="${u.id}"`, u.name, detail, maxed ? null : upgradeCost(u, level), ` <i>${pips(level, u.max)}</i>`);
     }).join('')}`).join('');
 
-  const weapons = WEAPON_IDS.map((id) => {
-    const w = WEAPONS[id];
-    const level = save.weapons[id];
-    if (level === undefined) return item(`data-weapon="${id}"`, w.name, `${w.desc} · freischalten`, w.cost);
-    const maxed = level >= WEAPON_MAX_LEVEL;
-    const factor = (l: number) => `Schaden ×${weaponDamageFactor(l).toFixed(1)}`;
-    return item(`data-weapon="${id}"`, w.name, maxed ? factor(level) : `${factor(level)} → ${factor(level + 1)}`,
-      maxed ? null : weaponUpgradeCost(level), ` <i>${pips(level, WEAPON_MAX_LEVEL)}</i>`);
-  }).join('');
-
-  const modules = MODULE_IDS.map((id) => {
-    const m = MODULES[id];
-    const owned = save.modules.includes(id);
-    return item(`data-module-buy="${id}"`, m.name, owned ? `${m.desc} · gekauft` : m.desc, owned ? null : m.cost);
-  }).join('');
-
   return `
     <h1>Shop</h1>
     ${wallet()}
     <div class="shop">
       ${groups}
-      <h2>Waffen</h2>${weapons}
-      <h2>Module</h2>${modules}
+      <h2>Drop-Vorrat</h2>
+      <p class="keys left">Waffen und Module findest du im Run. Was du hier freischaltest, kann dort als Beute auftauchen.</p>
+      ${UNLOCKS.map((u) => {
+        const owned = save.unlocked.includes(u.id);
+        const def = u.kind === 'weapon' ? WEAPONS[u.id as WeaponId] : MODULES[u.id as ModuleId];
+        const kind = u.kind === 'weapon' ? 'Waffe' : 'Modul';
+        return item(`data-unlock="${u.id}"`, def.name, `${kind} · ${def.desc}${owned ? ' · im Vorrat' : ''}`, owned ? null : u.cost);
+      }).join('')}
     </div>
     <div class="row">
-      <button data-action="sets">Ausrüstung</button>
+      <button data-action="chars">Charaktere</button>
       <button class="primary" data-action="menu">Zurück</button>
     </div>`;
 }
 
-function setsHtml(): string {
-  const set = save.sets[save.activeSet];
-  const chip = (attr: string, label: string, selected: boolean, disabled = false) =>
-    `<button class="chip ${selected ? 'selected' : ''}" ${attr} ${disabled ? 'disabled' : ''}>${label}</button>`;
-  const owned = WEAPON_IDS.filter((id) => save.weapons[id] !== undefined);
-  const full = set.modules.length >= MODULE_SLOTS;
+/** Was die Figur in diesem Run schon gefunden hat. */
+function loadoutText(): string {
+  const weapons = game.stats.weapons.map((id) => `${WEAPONS[id].name} ${ROMAN[game.weaponLevels[id] ?? 1]}`);
+  const modules = game.modules.map((m) => `${MODULES[m.id].name} ${ROMAN[m.level]}`);
+  return [...weapons, ...modules].join(' · ');
+}
+
+/** Beute nach einem geschafften Raum: eines von drei Dingen. */
+function lootHtml(): string {
+  const cards = game.offers.map((offer, i) => {
+    const d = describeOffer(game, offer);
+    return `
+      <button class="item loot" data-offer="${i}">
+        <span class="name">${i + 1} · ${d.title}<small>${offer.kind === 'weapon' ? 'Waffe' : 'Modul'}</small></span>
+        <span class="detail">${d.detail}</span>
+        <span class="cost">${d.tag}</span>
+      </button>`;
+  }).join('');
   return `
-    <h1>Ausrüstung</h1>
-    <p class="rule">Das gewählte Set gilt für den nächsten Run.</p>
-    <div class="row">
-      ${Array.from({ length: SET_COUNT }, (_, i) => chip(`data-set="${i}"`, `Set ${i + 1}`, i === save.activeSet)).join('')}
-    </div>
-    <div class="shop">
-      <h2>Hauptwaffe</h2>
-      <div class="row left">${owned.map((id) => chip(`data-primary="${id}"`, WEAPONS[id].name, set.primary === id)).join('')}</div>
-      <h2>Zweitwaffe</h2>
-      <div class="row left">
-        ${chip('data-secondary="none"', 'keine', set.secondary === null)}
-        ${owned.filter((id) => id !== set.primary).map((id) => chip(`data-secondary="${id}"`, WEAPONS[id].name, set.secondary === id)).join('')}
-      </div>
-      <h2>Module (${set.modules.length} / ${MODULE_SLOTS})</h2>
-      <div class="row left">
-        ${save.modules.length === 0 ? '<p class="keys">Noch keine Module gekauft.</p>' : ''}
-        ${save.modules.map((id) => {
-          const on = set.modules.includes(id);
-          return chip(`data-module="${id}"`, `${MODULES[id].name}<small>${MODULES[id].desc}</small>`, on, !on && full);
-        }).join('')}
-      </div>
-    </div>
+    <h1>Beute</h1>
+    <p class="rule">Raum ${game.room} geschafft. Wähle eines – es gilt für den Rest des Runs.</p>
+    <div class="shop">${cards}</div>
+    <p class="keys">Du hast: ${loadoutText()}<br>Tasten 1 bis ${game.offers.length} oder klicken</p>`;
+}
+
+function pickOffer(index: number) {
+  if (!takeOffer(game, index)) return;
+  releaseAll();
+  setScreen('playing');
+}
+
+/** Charakterwahl: Jeder bringt seine Standardwaffe, eine Eigenheit und eigene Grundwerte mit. */
+function charsHtml(): string {
+  const cards = CHARACTER_IDS.map((id) => {
+    const c = CHARACTERS[id];
+    const owned = save.characters.includes(id);
+    const selected = save.character === id;
+    const detail = `${WEAPONS[c.weapon].name} · ${c.trait} · ${c.profile}`;
+    if (!owned) return item(`data-character="${id}"`, c.name, detail, c.cost);
+    return `
+      <button class="item ${selected ? 'selected' : ''}" data-character="${id}">
+        <span class="name">${c.name}</span>
+        <span class="detail">${detail}</span>
+        <span class="cost">${selected ? 'gewählt' : 'wählen'}</span>
+      </button>`;
+  }).join('');
+  return `
+    <h1>Charaktere</h1>
+    ${wallet()}
+    <p class="rule">Der gewählte Charakter gilt für den nächsten Run.</p>
+    <div class="shop">${cards}</div>
     <div class="row">
       <button data-action="shop">Shop</button>
       <button class="primary" data-action="menu">Zurück</button>
@@ -280,31 +303,25 @@ overlay.addEventListener('click', (e) => {
   const button = (e.target as HTMLElement).closest('button');
   if (!button) return;
   const d = button.dataset;
-  const set = save.sets[save.activeSet];
 
+  if (d.offer) return pickOffer(Number(d.offer));
   if (d.action === 'start') return start();
   if (d.action === 'resume') return setScreen('playing');
   if (d.action === 'quit') {
     bankRun();
     return setScreen('over');
   }
-  if (d.action === 'menu' || d.action === 'shop' || d.action === 'sets') return setScreen(d.action);
+  if (d.action === 'menu' || d.action === 'shop' || d.action === 'chars') return setScreen(d.action);
 
   if (d.upgrade) buyUpgrade(save, d.upgrade as UpgradeId);
-  else if (d.weapon) buyWeapon(save, d.weapon as WeaponId);
-  else if (d.moduleBuy) buyModule(save, d.moduleBuy as ModuleId);
-  else if (d.set) save.activeSet = Number(d.set);
-  else if (d.primary) {
-    set.primary = d.primary as WeaponId;
-    if (set.secondary === set.primary) set.secondary = null;
-  } else if (d.secondary) {
-    set.secondary = d.secondary === 'none' ? null : (d.secondary as WeaponId);
-  } else if (d.module) {
-    const id = d.module as ModuleId;
-    if (set.modules.includes(id)) set.modules = set.modules.filter((m) => m !== id);
-    else if (set.modules.length < MODULE_SLOTS) set.modules.push(id);
+  else if (d.unlock) buyUnlock(save, d.unlock as WeaponId | ModuleId);
+  else if (d.character) {
+    const id = d.character as CharacterId;
+    if (!selectCharacter(save, id)) buyCharacter(save, id);
   } else return;
   persist(save);
+  // Im Hintergrund steht schon die Figur, mit der der nächste Run startet
+  if (screen !== 'paused') game = newGame(runStats(), TEST_ROOM);
   render();
 });
 
@@ -337,7 +354,9 @@ function updateHud() {
   hud.dashes.textContent = pips(game.dashes, s.dashCharges);
   hud.kickBar.style.width = `${(1 - game.kickCooldown / s.kickCooldown) * 100}%`;
   hud.kickBar.classList.toggle('ready', game.kickCooldown <= 0);
-  hud.weapon.textContent = WEAPONS[s.weapons[game.weapon]].name;
+  const weaponId = s.weapons[game.weapon];
+  hud.weapon.textContent = `${WEAPONS[weaponId].name} ${ROMAN[game.weaponLevels[weaponId] ?? 1]}`;
+  hud.modules.textContent = game.modules.map((m) => `${MODULES[m.id].name} ${ROMAN[m.level]}`).join(' · ');
 }
 
 // --- Schleife: feste Simulationsschritte, Rendering pro Bildschirm-Frame ---
@@ -374,6 +393,7 @@ function frame(now: number) {
     }
     for (const event of new Set(game.events)) play(event);
     game.events.length = 0;
+    if (game.offers.length > 0) setScreen('loot');
     if (game.over) {
       bankRun();
       setScreen('over');
