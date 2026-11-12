@@ -44,7 +44,7 @@ Abnahme-Prüfungen bestehen; dann den Kopf der Datei und diese Tabelle auf
 | 02 | [Schilddrohne](02-schilddrohne.md) | 01 | erledigt bis auf die Reflexion (Planer) |
 | 03 | [Sprengdrohne](03-sprengdrohne.md) | 01 | erledigt |
 | 04 | [Jagddrohne](04-jagddrohne.md) | 01 | erledigt |
-| 05 | [Laser vereinfachen](05-laser-vereinfachen.md) | – | offen |
+| 05 | [Laser vereinfachen](05-laser-vereinfachen.md) | – | erledigt |
 | 06 | [Boss: Panzer](06-boss-panzer.md) | 01, 03 | offen |
 | 07 | [Fernkämpfer mit Waffen](07-fernkaempfer.md) | 01, P1 | **gesperrt** – wartet auf P1, nicht beginnen |
 

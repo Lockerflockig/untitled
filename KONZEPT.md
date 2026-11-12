@@ -106,12 +106,12 @@ Grundregeln:
 - Jede Gefahr kündigt sich sichtbar an, bevor sie Schaden macht.
 - Gegner sind gegen Laser und Zielstrahl immun, außer sie werden hineingekickt **[fest]**.
 - Explosionen und Bodenfelder treffen Gegner immer **[Vorschlag]** – dorthin kann man sie also auch locken.
-- Die Laserhöhe ist an der Wand ablesbar: Austritt unten, oben oder über die ganze Wandhöhe **[fest als Platzhalter]**.
+- Laser haben nur noch die Höhe „voll" **[fest]**: Springen und Ducken helfen nicht, nur der Dash (I-Frames) schützt. Der Austritt an der Wand geht immer über die ganze Wandhöhe. Das bereitet vor, Ducken und Springen später zu ersetzen; die übrigen Gefahren behalten vorerst ihre Höhen.
 
 | Gefahr | Höhe | Verhalten | ab Raum |
 |---|---|---|---|
-| Sperrlaser | niedrig, hoch oder voll | eine Linie teilt den Raum für 3 s | 1 |
-| Wanderlaser | niedrig oder hoch | eine Linie fährt von Wand zu Wand | 1 |
+| Sperrlaser | voll | eine Linie teilt den Raum für 3 s | 1 |
+| Wanderlaser | voll | eine Linie fährt von Wand zu Wand; ein Viertel der Laser, der Rest sind Sperrlaser (3 : 1) | 1 |
 | Fass | voll | explodiert bei Schuss, Explosion oder Aufprall eines gekickten Gegners | 2 |
 | Bodenfeld | niedrig | Fläche nahe der Figur leuchtet auf, löst nach 1 s aus | 3 |
 | Mine | niedrig | zündet bei Annäherung; Überspringen löst sie nicht aus; abschießbar | 4 |

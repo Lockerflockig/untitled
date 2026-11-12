@@ -6,6 +6,7 @@ import type { EnemyKind, Game, Input, Laser, Stats } from '../src/sim/types.ts';
 import { newGame, roomPlan, step } from '../src/sim/game.ts';
 import { BOMB_SPEED, SHIELD_BLAST_RADIUS, SHIELD_TURN, alarmsOf, makeEnemy } from '../src/sim/enemies.ts';
 import { ALARM_INTERVAL, AlarmLoops } from '../src/alarmLoop.ts';
+import { spawnLaser } from '../src/sim/hazards.ts';
 import { ENEMIES, enemyStats } from '../src/sim/core.ts';
 import { describeOffer, rollOffers, takeOffer } from '../src/sim/loot.ts';
 import {
@@ -61,6 +62,42 @@ for (const [height, state, expectHit] of [
   if (state === 'dash') step(g, idle(g, { dash: true, ...along(g) }));
   run(g, 0.1, (g) => ({ duck: state === 'ducken', ...(state === 'dash' ? along(g) : {}) }));
   check(`Laser ${height}, ${state}`, (g.hp < 100) === expectHit, { hp: g.hp });
+}
+
+console.log('--- Laser: nur noch „voll" ---');
+{
+  // Mit festem Zufall, damit die Prüfung nicht von Glück abhängt
+  const original = Math.random;
+  let seed = 20240607;
+  Math.random = () => {
+    seed = (seed + 0x6d2b79f5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+  const g = quiet();
+  try {
+    for (let i = 0; i < 400; i++) spawnLaser(g);
+  } finally {
+    Math.random = original;
+  }
+  const moving = g.lasers.filter((l) => l.speed !== 0).length;
+  check('Aus 400 erzeugten Lasern hat jeder die Höhe „voll"', g.lasers.length === 400 && g.lasers.every((l) => l.height === 'full'),
+    [...new Set(g.lasers.map((l) => l.height))]);
+  check('Rund ein Viertel der Laser ist beweglich (statisch zu beweglich 3 : 1)', moving >= 72 && moving <= 128, { moving });
+  check('Vorwarnung, Dauer und Tempo bleiben: Sperrlaser 3 s, Wanderlaser 200 px/s',
+    g.lasers.every((l) => l.warn === 1 && (l.speed === 0 ? l.life === 3 : Math.abs(l.speed) === 200 && l.life === Infinity)));
+}
+for (const state of ['stehen', 'ducken', 'springen', 'dash'] as const) {
+  const g = quiet();
+  if (state === 'ducken') run(g, 0.05, () => ({ duck: true }));
+  if (state === 'springen') step(g, idle(g, { jump: true }));
+  g.lasers.push({ vertical: true, pos: g.x - 20, speed: 200, height: 'full', warn: 0, life: Infinity }); // fährt über die Figur
+  const along = (g: Game) => ({ aimX: g.x, aimY: g.y + 1000 }); // Dash entlang des Lasers
+  if (state === 'dash') step(g, idle(g, { dash: true, ...along(g) }));
+  run(g, 0.4, (g) => ({ duck: state === 'ducken', ...(state === 'dash' ? along(g) : {}) }));
+  check(`Beweglicher Laser, ${state}: ${state === 'dash' ? 'I-Frames schützen' : 'trifft (25 Schaden)'}`,
+    g.hp === (state === 'dash' ? 100 : 75), { hp: g.hp });
 }
 
 console.log('--- Kick, Domino, Wrack ---');

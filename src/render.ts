@@ -21,7 +21,6 @@ export const WALL = 60;
 export const VIEW = ARENA + 2 * WALL; // Kantenlänge des gezeichneten Ausschnitts
 
 const HEIGHT_COLOR: Record<Height, string> = { low: '#ffb347', high: '#4da3ff', full: '#ff4fd8' };
-const HEIGHT_LABEL: Record<Height, string> = { low: 'NIEDRIG · springen', high: 'HOCH · ducken', full: 'VOLL · dashen' };
 const ENEMY_COLOR = { hunter: '#ff5d73', gunner: '#ff9f43', shield: '#b388ff', bomber: '#ffe066', heavy: '#c0392b', boss: '#2ecc71' };
 
 type Ctx = CanvasRenderingContext2D;
@@ -183,9 +182,7 @@ function drawRoom(ctx: Ctx, room: number, doors: { entry: boolean; exit: boolean
   }
 }
 
-/** Austritt eines Lasers an beiden Wänden: unten, oben oder über die ganze Wandhöhe. */
-const EMITTER_SPAN: Record<Height, [number, number]> = { low: [0, 1 / 3], high: [2 / 3, 1], full: [0, 1] };
-
+/** Laser haben nur noch die Höhe „voll": Der Austritt an den Wänden geht über die ganze Wandhöhe. */
 function drawLasers(ctx: Ctx, g: Game) {
   for (const l of g.lasers) {
     const warning = l.warn > 0;
@@ -211,25 +208,14 @@ function drawLasers(ctx: Ctx, g: Game) {
       ctx.lineTo(ARENA, l.pos);
     }
     ctx.stroke();
-    // Austritt an den Wänden
-    const [from, to] = EMITTER_SPAN[l.height];
+    // Austritt an den Wänden, über die ganze Wandhöhe
     ctx.setLineDash([]);
     ctx.lineWidth = 9;
     for (const side of (l.vertical ? ['top', 'bottom'] : ['left', 'right']) as Side[]) {
       ctx.beginPath();
-      ctx.moveTo(...wallPoint(side, l.pos, from));
-      ctx.lineTo(...wallPoint(side, l.pos, to));
+      ctx.moveTo(...wallPoint(side, l.pos, 0));
+      ctx.lineTo(...wallPoint(side, l.pos, 1));
       ctx.stroke();
-    }
-    ctx.shadowBlur = 0;
-    ctx.font = '600 13px system-ui, sans-serif';
-    ctx.textBaseline = 'top';
-    if (l.vertical) {
-      ctx.textAlign = l.pos > ARENA - 150 ? 'right' : 'left';
-      ctx.fillText(HEIGHT_LABEL[l.height], l.pos + (l.pos > ARENA - 150 ? -8 : 8), 10);
-    } else {
-      ctx.textAlign = 'left';
-      ctx.fillText(HEIGHT_LABEL[l.height], 10, l.pos + (l.pos > ARENA - 30 ? -20 : 6));
     }
     ctx.restore();
   }
