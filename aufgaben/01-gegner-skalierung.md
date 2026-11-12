@@ -1,6 +1,6 @@
 # 01 – Gegner skalieren mit dem Level
 
-Status: offen
+Status: erledigt (ohne Boss-Anteile, siehe „Aufgefallen")
 
 ## Ziel
 
@@ -78,8 +78,21 @@ Das ist die Grundlage dafür, jede Gegnerklasse danach einzeln zu überarbeiten
 
 ## Aufgefallen
 
-(vom umsetzenden Agenten auszufüllen)
+- **Boss ausgenommen (auf Anweisung des Auftraggebers).** Alles, was den Boss betrifft, ist liegen geblieben: Regel 8 (`BOSS_HP_GROWTH` entfällt, Grundwert 615), der Boss-Anteil von Regel 5 (Boss-Geschosse und Boss-Bodenfelder skalieren nicht) und die Prüfung „Boss in Level 5/10". `enterRoom` (`src/sim/game.ts`) erzeugt den Boss ausdrücklich mit `makeEnemy('boss', …, 1)`; `ENEMIES.boss.hp` bleibt 900, `BOSS_HP_GROWTH` bleibt. Für Aufgabe 06 ist das eine kleine Umstellung: Level `g.room` übergeben, `hp: 615` setzen, `BOSS_HP_GROWTH` löschen, `BOSS_SHOT_DAMAGE` mit `scaledDamage` skalieren und den Bodenfeldern (`Field`, `src/sim/types.ts`) ein eigenes `damage`-Feld geben – heute lesen sie die Konstante `FIELD_DAMAGE`.
+- Die Sprengdrohne steht mit 225 → 290 px/s in der Tempo-Tabelle, wie hier vorgegeben. Aufgabe 03 ersetzt das durch „1,5 × Tempo der Figur".
+- Die Ersatz-Lebensleiste in `src/render.ts` (ohne Sprite-Bilder) rechnete noch mit dem Grundwert des Typs statt mit `maxHp`; das war nötig, damit sie bei skalierten Gegnern stimmt, und ist geändert.
+- Nebenwirkung von `npm install`: Es entsteht eine `package-lock.json`. Sie ist nicht im Repository und wurde nicht eingecheckt.
 
 ## Übergabe an den Planer
 
-(vom umsetzenden Agenten auszufüllen: umgesetzte und bewusst ausgelassene Regeln; neue Felder, Funktionen und Konstanten mit Datei; geänderte Prüfungen; was im Browser angesehen wurde)
+**Umgesetzt:** Regeln 1–7, 9 und 10. Regel 8 und der Boss-Anteil von Regel 5 bewusst nicht (siehe „Aufgefallen"). Die Vorgaben der offenen Fragen sind eingehalten (Tempo-Grenze je Typ; Angriffsfrequenz und Geschosstempo skalieren nicht; Gefahren im Raum skalieren nicht).
+
+**Neue Felder, Funktionen, Konstanten:**
+- `src/sim/core.ts`: `enemyStats(kind, level)` liefert `{ hp, speed, damage }`; `scaledDamage(base, level)` skaliert jeden Schaden, den ein Gegner verursacht; `HP_GROWTH` (1,10), `DAMAGE_GROWTH` (1,06), `SPEED_GROWTH` (1,03); `EnemyDef.speedMax` je Typ.
+- `src/sim/types.ts`: `Enemy.level`, `Enemy.speed`, `Enemy.damage`.
+- `src/sim/enemies.ts`: `makeEnemy(kind, x, y, level = 1)`; erscheinende Gegner bekommen `g.room` als Level. Geschütz-Schuss und Explosion der Sprengdrohne laufen über `scaledDamage(…, e.level)`.
+- `src/sim/game.ts`: `SPAWN_MIX` (ab welchem Level welcher Typ mit welchem Gewicht), `MAX_ENEMIES`, `SPAWN_EVERY`, `BOSS_ROOM`; `roomPlan` liest sie. Die Werte sind die heutigen.
+
+**Geänderte Prüfungen:** keine. Neu ist der Abschnitt „Skalierung mit dem Level" in `tests/rules.ts` (Grundwerte und Level 6, Tempo-Grenze, skalierte Berührung mit dem Schweren Mech, Geschützschuss Level 1 gegen 6, Level beim Erscheinen, Punkte/Radius/Masse, Typen ab Level, Mengen). Die Berührungsprüfung nutzt bewusst den Schweren Mech, weil die Jagddrohne in Aufgabe 04 keinen Berührungsschaden mehr hat.
+
+**Im Browser angesehen:** Rauchtest mit Chromium (Raum 6, Cyborg, vier Sekunden gespielt): startet, läuft, keine Konsolenfehler. Die Sprite-Bilder fehlen im Repository; gesehen wurden die Ersatzformen. Es gibt keine neue Anzeige, also nichts weiter zu prüfen.

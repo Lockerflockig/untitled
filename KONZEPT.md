@@ -133,6 +133,28 @@ nur die Bewegung eingeschränkt haben **[fest]**.
 
 Die Namen sind Arbeitstitel. Gegner kündigen ihr Erscheinen an.
 
+### Skalierung mit dem Level **[fest]**
+
+Level ist die Raumnummer. Jeder Gegner bekommt beim Erscheinen Werte, die mit
+dem Level exponentiell wachsen und danach unverändert bleiben:
+
+| Wert | Wachstum je Level | Level 10 | Level 20 |
+|---|---|---|---|
+| Leben | ×1,10 | ×2,4 | ×6,1 |
+| Schaden | ×1,06 | ×1,7 | ×3,0 |
+| Tempo | ×1,03, begrenzt je Typ | | |
+
+Der Schaden gilt für jeden Angriff des Gegners (Berührung, Geschosse,
+Explosion). Das Tempo hat je Typ eine harte Obergrenze, damit kein Verfolger
+dauerhaft schneller wird als die Figur ohne Upgrades (300 px/s): Jagddrohne
+250, Geschützdrohne 170, Schild 190, Sprengdrohne 290, Schwerer Mech 130.
+Radius, Masse und Punkte skalieren nicht; Gefahren im Raum (Laser, Minen,
+Fässer, Geschütze, Bodenfelder, Zielstrahl) auch nicht. Welche Typen erscheinen,
+wie viele gleichzeitig da sind und wie schnell sie nachkommen, steht in
+`roomPlan` (`src/sim/game.ts`). **Der Boss ist ausgenommen**, bis sein Umbau
+(Aufgabe 06) kommt: Er erscheint weiter mit den Werten aus Level 1 und seinem
+eigenen Zuwachs von 50 % je Boss.
+
 ## 7. Räume und Aufgaben **[fest]**
 
 Aufgabe und Punkte sind getrennt. Ist die Aufgabe erfüllt, verschwinden Gegner
@@ -284,7 +306,6 @@ Geschützdrohne, Boss und Geschütze greifen öfter an.
 ### Für später vorgemerkt (von dir genannt)
 
 - Das Loot-System weiter ausarbeiten.
-- Gegner skalieren mit dem Level.
 - Schild-Drohnen reflektieren Geschosse, statt sie nur zu schlucken.
 - Eigene Explosionen können auch der Figur schaden.
 - Minen eventuell als passive Fähigkeit.

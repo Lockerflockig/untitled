@@ -409,11 +409,11 @@ function drawEnemy(ctx: Ctx, g: Game, e: Enemy, time: number) {
     ctx.fillStyle = '#10131a';
     ctx.fill();
   }
-  if (e.hp < def.hp) {
+  if (e.hp < e.maxHp) {
     ctx.fillStyle = '#3a1820';
     ctx.fillRect(e.x - def.r, e.y - def.r - 9, def.r * 2, 4);
     ctx.fillStyle = ENEMY_COLOR[e.kind];
-    ctx.fillRect(e.x - def.r, e.y - def.r - 9, def.r * 2 * Math.max(0, e.hp / def.hp), 4);
+    ctx.fillRect(e.x - def.r, e.y - def.r - 9, def.r * 2 * Math.max(0, e.hp / e.maxHp), 4);
   }
 }
 

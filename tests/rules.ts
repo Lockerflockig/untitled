@@ -5,6 +5,7 @@ import { STEP } from '../src/sim/types.ts';
 import type { EnemyKind, Game, Input, Laser, Stats } from '../src/sim/types.ts';
 import { newGame, roomPlan, step } from '../src/sim/game.ts';
 import { makeEnemy } from '../src/sim/enemies.ts';
+import { ENEMIES, enemyStats } from '../src/sim/core.ts';
 import { describeOffer, rollOffers, takeOffer } from '../src/sim/loot.ts';
 import {
   buyCharacter, buyUnlock, buyUpgrade, defaultSave, sanitize, selectCharacter, statsFrom,
@@ -213,6 +214,79 @@ console.log('--- Gegnertypen ---');
   run(g, 0.4, () => ({ fire: true }));
   check('Abgeschossene Sprengdrohne reißt Nachbarn mit', !g.enemies.includes(bomber) && near.hp <= 0 && g.hp === 100,
     { near: near.hp, hp: g.hp, score: g.score });
+}
+
+console.log('--- Skalierung mit dem Level ---');
+{
+  const [one, six] = [enemyStats('hunter', 1), enemyStats('hunter', 6)];
+  check('Jagddrohne: Level 1 hat die Grundwerte, Level 6 nach der Formel (64 / 20 / 191)',
+    one.hp === 40 && one.damage === 15 && one.speed === 165 && six.hp === 64 && six.damage === 20 && six.speed === 191, { one, six });
+  const e = makeEnemy('hunter', 100, 100, 6);
+  check('Der Gegner trägt seine Werte selbst', e.level === 6 && e.maxHp === 64 && e.hp === 64 && e.damage === 20 && e.speed === 191,
+    { level: e.level, hp: e.hp, damage: e.damage, speed: e.speed });
+  check('Ohne Level ist es Level 1', makeEnemy('hunter', 0, 0).level === 1 && makeEnemy('hunter', 0, 0).maxHp === 40);
+}
+{
+  const speeds = [1, 5, 10, 16, 20, 40, 100].map((n) => enemyStats('hunter', n).speed);
+  check('Tempo der Jagddrohne erreicht 250 und bleibt dort', enemyStats('hunter', 40).speed === 250 && speeds.every((v) => v <= 250)
+    && speeds.slice(-3).every((v) => v === 250), speeds);
+  const kinds = Object.keys(ENEMIES) as EnemyKind[];
+  check('Jeder Typ stößt an seine Tempo-Grenze, und keine liegt über dem Tempo der Figur ohne Upgrades (300)',
+    kinds.every((k) => enemyStats(k, 200).speed === ENEMIES[k].speedMax && ENEMIES[k].speedMax <= 300),
+    kinds.map((k) => [k, enemyStats(k, 200).speed]));
+  check('Leben wächst ohne Grenze, Schaden ebenfalls (Level 20: ×6,1 und ×3,0)',
+    enemyStats('hunter', 20).hp === Math.round(40 * 1.1 ** 19) && enemyStats('hunter', 20).damage === Math.round(15 * 1.06 ** 19)
+    && enemyStats('hunter', 21).hp > enemyStats('hunter', 20).hp);
+}
+{
+  const g = quiet();
+  g.hp = 100;
+  const e = makeEnemy('heavy', g.x + 20, g.y, 6);
+  g.enemies.push(e);
+  run(g, 0.05);
+  check('Berührung eines Gegners aus Level 6 zieht den skalierten Schaden ab (30 → 40)', g.hp === 60, { hp: g.hp });
+}
+{
+  const shotDamage = (level: number) => {
+    const g = quiet();
+    g.enemies.push(makeEnemy('gunner', g.x + 300, g.y, level));
+    for (let i = 0; i < 400 && g.shots.length === 0; i++) step(g, idle(g));
+    return g.shots[0]?.damage;
+  };
+  check('Geschoss einer Geschützdrohne aus Level 6 macht mehr Schaden als aus Level 1 (16 gegen 12)',
+    shotDamage(1) === 12 && shotDamage(6) === 16, { one: shotDamage(1), six: shotDamage(6) });
+}
+{
+  const g = quiet(baseStats(), 6);
+  g.spawnTimer = 0;
+  run(g, 1.3);
+  check('Erscheinende Gegner bekommen das Level des Raums', g.enemies.length > 0
+    && g.enemies.every((e) => e.level === 6 && e.maxHp === enemyStats(e.kind, 6).hp && e.speed === enemyStats(e.kind, 6).speed),
+    g.enemies.map((e) => [e.kind, e.level, e.maxHp]));
+}
+{
+  const killScore = (level: number) => {
+    const g = quiet();
+    const e = makeEnemy('hunter', g.x + 200, g.y, level);
+    e.hp = 1;
+    g.enemies.push(e);
+    run(g, 0.9, () => ({ fire: true }));
+    return g.score;
+  };
+  check('Punkte, Radius und Masse bleiben in Level 20 gleich (100 Punkte)',
+    killScore(1) === 100 && killScore(20) === 100 && Object.keys(enemyStats('hunter', 20)).sort().join() === 'damage,hp,speed'
+    && ENEMIES.hunter.r === 14 && ENEMIES.hunter.mass === 1 && ENEMIES.hunter.points === 100,
+    { one: killScore(1), twenty: killScore(20) });
+}
+{
+  const kinds = (n: number) => roomPlan(n).mix.map(([k]) => k).join();
+  check('Gegnertypen kommen ab ihrem Level dazu: Geschütz 3, Sprengdrohne 4, Schild 6, Schwerer Mech 7',
+    kinds(1) === 'hunter' && kinds(2) === 'hunter' && kinds(3) === 'hunter,gunner' && kinds(4) === 'hunter,gunner,bomber'
+    && kinds(6) === 'hunter,gunner,bomber,shield' && kinds(7) === 'hunter,gunner,bomber,shield,heavy', [1, 3, 4, 6, 7].map(kinds));
+  check('Anzahl und Erscheinungsrate wachsen weiter mit dem Level, die heutigen Werte bleiben',
+    roomPlan(1).maxEnemies === 6 && roomPlan(4).maxEnemies === 9 && roomPlan(9).maxEnemies === 14 && roomPlan(19).maxEnemies === 14
+    && roomPlan(5).maxEnemies === 3 && Math.abs(roomPlan(2).spawnEvery - 2.1) < 1e-9 && roomPlan(19).spawnEvery === 0.9
+    && roomPlan(5).spawnEvery === 4, [1, 4, 9, 19, 5].map((n) => [roomPlan(n).maxEnemies, roomPlan(n).spawnEvery]));
 }
 
 console.log('--- Gefahren ---');

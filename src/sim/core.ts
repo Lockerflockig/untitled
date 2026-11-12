@@ -11,25 +11,52 @@ export const BARREL_R = 16;
 export const TURRET_R = 16;
 const SHIELD_TIME = 0.6; // Schonzeit nach einem Treffer
 
+/**
+ * Grundwerte eines Gegnertyps in Level 1. Leben, Tempo und Schaden wachsen mit dem
+ * Level (siehe enemyStats); Radius, Masse und Punkte bleiben immer gleich.
+ */
 export interface EnemyDef {
   name: string;
   r: number;
   hp: number;
-  speed: number;
+  speed: number; // px/s
+  speedMax: number; // px/s – harte Obergrenze, egal wie hoch das Level ist
   damage: number; // bei Berührung
   mass: number; // schwere Gegner fliegen kürzer und stoßen leichte stärker weg
   points: number;
 }
 
 export const ENEMIES: Record<EnemyKind, EnemyDef> = {
-  hunter: { name: 'Jagddrohne', r: 14, hp: 40, speed: 165, damage: 15, mass: 1, points: 100 },
-  gunner: { name: 'Geschützdrohne', r: 14, hp: 30, speed: 115, damage: 0, mass: 1, points: 150 },
-  shield: { name: 'Schild-Mech', r: 17, hp: 60, speed: 125, damage: 20, mass: 1.5, points: 200 },
-  bomber: { name: 'Sprengdrohne', r: 13, hp: 20, speed: 225, damage: 0, mass: 0.8, points: 120 },
-  heavy: { name: 'Schwerer Mech', r: 25, hp: 160, speed: 88, damage: 30, mass: 4, points: 400 },
+  hunter: { name: 'Jagddrohne', r: 14, hp: 40, speed: 165, speedMax: 250, damage: 15, mass: 1, points: 100 },
+  gunner: { name: 'Geschützdrohne', r: 14, hp: 30, speed: 115, speedMax: 170, damage: 0, mass: 1, points: 150 },
+  shield: { name: 'Schild-Mech', r: 17, hp: 60, speed: 125, speedMax: 190, damage: 20, mass: 1.5, points: 200 },
+  bomber: { name: 'Sprengdrohne', r: 13, hp: 20, speed: 225, speedMax: 290, damage: 0, mass: 0.8, points: 120 },
+  heavy: { name: 'Schwerer Mech', r: 25, hp: 160, speed: 88, speedMax: 130, damage: 30, mass: 4, points: 400 },
   // Boss: so schwer, dass ein Kick ihn praktisch nicht bewegt
-  boss: { name: 'Panzer', r: 46, hp: 900, speed: 52, damage: 30, mass: 12, points: 2000 },
+  boss: { name: 'Panzer', r: 46, hp: 900, speed: 52, speedMax: 80, damage: 30, mass: 12, points: 2000 },
 };
+
+// Skalierung mit dem Level (= Raumnummer, beginnend bei 1): je Level wächst der Wert um
+// diesen Faktor, exponentiell. An diesen drei Zahlen wird im Balancing gedreht.
+export const HP_GROWTH = 1.1; // Leben: Level 10 = ×2,4, Level 20 = ×6,1
+export const DAMAGE_GROWTH = 1.06; // Schaden: Level 10 = ×1,7, Level 20 = ×3,0
+export const SPEED_GROWTH = 1.03; // Tempo, begrenzt durch speedMax des Typs
+
+/** Wie oft der Wachstumsfaktor greift: Level 1 ist der Grundwert. */
+const stepsOf = (level: number) => Math.max(1, Math.floor(level)) - 1;
+
+/** Schaden eines Gegners, der im gegebenen Level erschienen ist. Gilt für jeden Angriff, nicht nur die Berührung. */
+export const scaledDamage = (base: number, level: number) => Math.round(base * DAMAGE_GROWTH ** stepsOf(level));
+
+/** Die Werte eines Gegnertyps in einem Level. Sie werden beim Erscheinen festgelegt und ändern sich danach nicht. */
+export function enemyStats(kind: EnemyKind, level: number) {
+  const def = ENEMIES[kind];
+  return {
+    hp: Math.round(def.hp * HP_GROWTH ** stepsOf(level)),
+    speed: Math.round(Math.min(def.speedMax, def.speed * SPEED_GROWTH ** stepsOf(level))),
+    damage: scaledDamage(def.damage, level),
+  };
+}
 
 export const BLAST_TIME = 0.5; // so lange ist eine Explosion zu sehen
 

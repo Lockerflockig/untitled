@@ -3,7 +3,8 @@
 import { STEP } from './types.ts';
 import type { Enemy, EnemyKind, Game } from './types.ts';
 import {
-  BARREL_R, ENEMIES, PLAYER_R, TURRET_R, clampTo, damageEnemy, explode, hurtPlayer, scoreKill, spot,
+  BARREL_R, ENEMIES, PLAYER_R, TURRET_R, clampTo, damageEnemy, enemyStats, explode, hurtPlayer, scaledDamage,
+  scoreKill, spot,
 } from './core.ts';
 import { FIELD_ACTIVE, FIELD_RADIUS, FIELD_WARN } from './hazards.ts';
 
@@ -61,9 +62,11 @@ function pickKind(g: Game): EnemyKind {
   return g.plan.mix[0][0];
 }
 
-export function makeEnemy(kind: EnemyKind, x: number, y: number): Enemy {
+/** Neuer Gegner. Leben, Tempo und Schaden hängen vom Level ab und gelten danach unverändert. */
+export function makeEnemy(kind: EnemyKind, x: number, y: number, level = 1): Enemy {
+  const stats = enemyStats(kind, level);
   return {
-    kind, x, y, hp: ENEMIES[kind].hp, maxHp: ENEMIES[kind].hp, mode: 0,
+    kind, level, x, y, hp: stats.hp, maxHp: stats.hp, speed: stats.speed, damage: stats.damage, mode: 0,
     pushX: 0, pushY: 0, kicked: false, dead: false, suicide: false,
     lastHit: 'gun', action: 0, hitFlash: 0, dashHit: false, slideHit: false, laserCooldown: 0,
     cooldown: GUNNER_COOLDOWN, windup: 0, fuse: null, angle: 0,
@@ -80,7 +83,7 @@ export function stepSpawns(g: Game) {
   g.spawns = g.spawns.filter((s) => {
     s.t -= STEP;
     if (s.t > 0) return true;
-    g.enemies.push(makeEnemy(s.kind, s.x, s.y));
+    g.enemies.push(makeEnemy(s.kind, s.x, s.y, g.room));
     return false;
   });
 }
@@ -103,12 +106,12 @@ export function stepEnemies(g: Game) {
       switch (e.kind) {
         case 'hunter':
         case 'heavy':
-          moveX = toX * def.speed;
-          moveY = toY * def.speed;
+          moveX = toX * e.speed;
+          moveY = toY * e.speed;
           break;
         case 'shield': {
-          moveX = toX * def.speed;
-          moveY = toY * def.speed;
+          moveX = toX * e.speed;
+          moveY = toY * e.speed;
           // dreht den Schild nur langsam zur Figur
           let turn = Math.atan2(dy, dx) - e.angle;
           turn = Math.atan2(Math.sin(turn), Math.cos(turn));
@@ -117,8 +120,8 @@ export function stepEnemies(g: Game) {
         }
         case 'boss':
           // Rollt langsam auf die Figur zu und wechselt zwei angekündigte Angriffe ab
-          moveX = toX * def.speed;
-          moveY = toY * def.speed;
+          moveX = toX * e.speed;
+          moveY = toY * e.speed;
           if (e.windup > 0) {
             moveX = moveY = 0;
             e.windup -= STEP;
@@ -155,8 +158,8 @@ export function stepEnemies(g: Game) {
           break;
         case 'bomber':
           if (e.fuse === null) {
-            moveX = toX * def.speed;
-            moveY = toY * def.speed;
+            moveX = toX * e.speed;
+            moveY = toY * e.speed;
             if (dist < BOMB_TRIGGER) e.fuse = BOMB_FUSE;
           }
           break;
@@ -164,8 +167,8 @@ export function stepEnemies(g: Game) {
           // hält Abstand und umkreist die Figur
           const [near, far] = GUNNER_RANGE;
           const radial = dist > far ? 1 : dist < near ? -1 : 0;
-          moveX = (toX * radial - toY * 0.5) * def.speed;
-          moveY = (toY * radial + toX * 0.5) * def.speed;
+          moveX = (toX * radial - toY * 0.5) * e.speed;
+          moveY = (toY * radial + toX * 0.5) * e.speed;
           if (e.windup > 0) {
             moveX = moveY = 0; // steht beim Zielen still
             e.windup -= STEP;
@@ -173,7 +176,7 @@ export function stepEnemies(g: Game) {
               g.shots.push({
                 x: e.x + toX * def.r, y: e.y + toY * def.r,
                 vx: toX * GUNNER_SHOT_SPEED, vy: toY * GUNNER_SHOT_SPEED,
-                damage: GUNNER_SHOT_DAMAGE,
+                damage: scaledDamage(GUNNER_SHOT_DAMAGE, e.level),
               });
               e.cooldown = GUNNER_COOLDOWN;
             }
@@ -219,8 +222,8 @@ export function stepEnemies(g: Game) {
           e.pushY = (-toY * KNOCKBACK) / def.mass;
         }
       }
-    } else if (!g.dashing && !e.kicked && def.damage > 0 && dist < PLAYER_R + def.r) {
-      if (hurtPlayer(g, def.damage)) {
+    } else if (!g.dashing && !e.kicked && e.damage > 0 && dist < PLAYER_R + def.r) {
+      if (hurtPlayer(g, e.damage)) {
         e.pushX = (-toX * KNOCKBACK) / def.mass;
         e.pushY = (-toY * KNOCKBACK) / def.mass;
       }
@@ -308,7 +311,10 @@ export function stepEnemies(g: Game) {
     if (!e.suicide) scoreKill(g, e);
     if (e.kind === 'bomber') {
       // Sprengdrohnen detonieren immer – auch abgeschossen oder weggekickt
-      explode(g, e.x, e.y, BOMB_RADIUS, BOMB_ENEMY_DAMAGE, BOMB_DAMAGE, 'env', e.action, 'bomb');
+      explode(
+        g, e.x, e.y, BOMB_RADIUS, scaledDamage(BOMB_ENEMY_DAMAGE, e.level), scaledDamage(BOMB_DAMAGE, e.level),
+        'env', e.action, 'bomb',
+      );
       return false;
     }
     return e.kicked;

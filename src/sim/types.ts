@@ -83,10 +83,13 @@ export interface Input {
 
 export interface Enemy {
   kind: EnemyKind;
+  level: number; // Level (Raumnummer), in dem er erschienen ist; bestimmt die Werte seiner Angriffe
   x: number;
   y: number;
   hp: number;
   maxHp: number;
+  speed: number; // px/s, beim Erscheinen festgelegt
+  damage: number; // bei Berührung, beim Erscheinen festgelegt
   mode: number; // Boss: zählt die Angriffe durch, um sie abzuwechseln
   pushX: number; // Rückstoß, klingt ab
   pushY: number;
