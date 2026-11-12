@@ -30,7 +30,8 @@ export const ENEMIES: Record<EnemyKind, EnemyDef> = {
   hunter: { name: 'Jagddrohne', r: 14, hp: 40, speed: 165, speedMax: 250, damage: 15, mass: 1, points: 100 },
   gunner: { name: 'Geschützdrohne', r: 14, hp: 30, speed: 115, speedMax: 170, damage: 0, mass: 1, points: 150 },
   shield: { name: 'Schilddrohne', r: 17, hp: 60, speed: 125, speedMax: 190, damage: 20, mass: 1.5, points: 200 },
-  bomber: { name: 'Sprengdrohne', r: 13, hp: 20, speed: 225, speedMax: 290, damage: 0, mass: 0.8, points: 120 },
+  // Sprengdrohne: Das Tempo steht nicht hier, sondern ergibt sich aus dem der Figur (BOMB_SPEED in enemies.ts)
+  bomber: { name: 'Sprengdrohne', r: 13, hp: 20, speed: 0, speedMax: 0, damage: 0, mass: 0.8, points: 120 },
   heavy: { name: 'Schwerer Mech', r: 25, hp: 160, speed: 88, speedMax: 130, damage: 30, mass: 4, points: 400 },
   // Boss: so schwer, dass ein Kick ihn praktisch nicht bewegt
   boss: { name: 'Panzer', r: 46, hp: 900, speed: 52, speedMax: 80, damage: 30, mass: 12, points: 2000 },

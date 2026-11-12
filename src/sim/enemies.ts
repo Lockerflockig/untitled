@@ -1,7 +1,7 @@
 // Gegner: Erscheinen, Verhalten je Typ, Kick-Flug, Domino, Wracks.
 
 import { STEP } from './types.ts';
-import type { Enemy, EnemyKind, Game } from './types.ts';
+import type { Alarm, Enemy, EnemyKind, Game } from './types.ts';
 import {
   BARREL_R, ENEMIES, PLAYER_R, TURRET_R, clampTo, damageEnemy, enemyStats, explode, hurtPlayer, scaledDamage,
   scoreKill, spot,
@@ -40,11 +40,12 @@ export const SHIELD_BLAST_RADIUS = 90; // px – Explosion beim Zerstören, die 
 const SHIELD_BLAST_DAMAGE = 25; // in Level 1, für Figur und Gegner gleich; wächst mit dem Level
 
 // Sprengdrohne
+export const BOMB_SPEED = 1.5; // Faktor auf das Höchsttempo der Figur: immer schneller als sie, skaliert nicht mit dem Level
 const BOMB_TRIGGER = 70;
 export const BOMB_FUSE = 0.6;
-const BOMB_RADIUS = 80;
-const BOMB_DAMAGE = 30; // an der Figur
-const BOMB_ENEMY_DAMAGE = 40;
+export const BOMB_RADIUS = 160; // px
+const BOMB_DAMAGE = 30; // an der Figur, in Level 1
+const BOMB_ENEMY_DAMAGE = 40; // an Gegnern, in Level 1
 
 // Boss (Panzer)
 const BOSS_COOLDOWN = 1.6;
@@ -88,6 +89,24 @@ export function stepSpawns(g: Game) {
     g.enemies.push(makeEnemy(s.kind, s.x, s.y, g.room));
     return false;
   });
+}
+
+/**
+ * Welche Dauertöne gerade laufen sollen. Die Oberfläche fragt das jeden Frame ab und
+ * startet oder beendet die Schleifen entsprechend. Neue Quellen (etwa ein Sendemast)
+ * tragen hier ihre Bedingung mit eigener Art ein.
+ */
+export function alarmsOf(g: Game): Alarm[] {
+  const alarms: Alarm[] = [];
+  if (g.over || g.phase !== 'play') return alarms;
+  // Eine Sprengdrohne läuft auf die Figur zu, solange sie im Raum ist, lebt und nicht fliegt.
+  // Mit brennender Lunte wird der Ton dringlicher.
+  const chasing = g.enemies.filter((e) => e.kind === 'bomber' && !e.dead && !e.kicked);
+  if (chasing.length > 0) {
+    const urgency = Math.max(...chasing.map((e) => (e.fuse === null ? 0 : 0.5 + 0.5 * (1 - e.fuse / BOMB_FUSE))));
+    alarms.push({ kind: 'beep', urgency: Math.min(1, Math.max(0, urgency)) });
+  }
+  return alarms;
 }
 
 export function stepEnemies(g: Game) {
@@ -160,8 +179,9 @@ export function stepEnemies(g: Game) {
           break;
         case 'bomber':
           if (e.fuse === null) {
-            moveX = toX * e.speed;
-            moveY = toY * e.speed;
+            // schneller als die Figur, egal wie schnell sie ist (Upgrades, Charakter)
+            moveX = toX * g.stats.speed * BOMB_SPEED;
+            moveY = toY * g.stats.speed * BOMB_SPEED;
             if (dist < BOMB_TRIGGER) e.fuse = BOMB_FUSE;
           }
           break;
@@ -190,10 +210,11 @@ export function stepEnemies(g: Game) {
         }
       }
     }
-    // Die Lunte der Sprengdrohne läuft auch im Flug weiter
+    // Die Lunte der Sprengdrohne läuft auch im Flug weiter. Wer sie in diesem Schritt
+    // schon zerstört hat (hp <= 0), war schneller als die Lunte.
     if (e.fuse !== null && !e.dead) {
       e.fuse -= STEP;
-      if (e.fuse <= 0) {
+      if (e.fuse <= 0 && e.hp > 0) {
         e.hp = 0;
         e.suicide = true;
       }
@@ -320,11 +341,14 @@ export function stepEnemies(g: Game) {
       return false;
     }
     if (e.kind === 'bomber') {
-      // Sprengdrohnen detonieren immer – auch abgeschossen oder weggekickt
-      explode(
-        g, e.x, e.y, BOMB_RADIUS, scaledDamage(BOMB_ENEMY_DAMAGE, e.level), scaledDamage(BOMB_DAMAGE, e.level),
-        'env', e.action, 'bomb',
-      );
+      // Sie explodiert nur, wenn ihre Lunte abläuft (dann gibt es keine Punkte). Wer sie vorher
+      // zerstört – egal wodurch –, bekommt die Punkte, und sie verschwindet ohne Explosion.
+      if (e.suicide) {
+        explode(
+          g, e.x, e.y, BOMB_RADIUS, scaledDamage(BOMB_ENEMY_DAMAGE, e.level), scaledDamage(BOMB_DAMAGE, e.level),
+          'env', e.action, 'bomb',
+        );
+      }
       return false;
     }
     return e.kicked;

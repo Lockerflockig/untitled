@@ -4,7 +4,8 @@
 import { STEP } from '../src/sim/types.ts';
 import type { EnemyKind, Game, Input, Laser, Stats } from '../src/sim/types.ts';
 import { newGame, roomPlan, step } from '../src/sim/game.ts';
-import { SHIELD_BLAST_RADIUS, SHIELD_TURN, makeEnemy } from '../src/sim/enemies.ts';
+import { BOMB_SPEED, SHIELD_BLAST_RADIUS, SHIELD_TURN, alarmsOf, makeEnemy } from '../src/sim/enemies.ts';
+import { ALARM_INTERVAL, AlarmLoops } from '../src/alarmLoop.ts';
 import { ENEMIES, enemyStats } from '../src/sim/core.ts';
 import { describeOffer, rollOffers, takeOffer } from '../src/sim/loot.ts';
 import {
@@ -207,14 +208,6 @@ console.log('--- Gegnertypen ---');
   check('Sprengdrohne detoniert an der Figur: 30 Schaden, keine Punkte', g.hp === 70 && g.score === 0 && g.enemies.length === 0,
     { hp: g.hp, score: g.score, enemies: g.enemies.length });
 }
-{
-  const g = quiet();
-  const bomber = add(g, 'bomber', 250);
-  const near = add(g, 'hunter', 290);
-  run(g, 0.4, () => ({ fire: true }));
-  check('Abgeschossene Sprengdrohne reißt Nachbarn mit', !g.enemies.includes(bomber) && near.hp <= 0 && g.hp === 100,
-    { near: near.hp, hp: g.hp, score: g.score });
-}
 
 console.log('--- Skalierung mit dem Level ---');
 {
@@ -378,6 +371,132 @@ console.log('--- Schilddrohne ---');
   check('Spur: liegt an der Stelle, bleibt 60 s und über das Ende der Aufgabe, ist im nächsten Raum weg',
     Math.abs(at.x - (400 + 200)) < 3 && at.r === 90 && after60 === 1 && afterClear.phase === 'exit' && afterClear.marks === 1
     && g.room === 2 && g.marks.length === 0, { at, after60, afterClear, room: g.room, marks: g.marks.length });
+}
+
+console.log('--- Sprengdrohne ---');
+{
+  // Sie steht weit weg und läuft los; gemessen wird das Tempo über zwölf Schritte
+  const speedOf = (stats: Stats, level: number) => {
+    const g = quiet(stats);
+    const e = makeEnemy('bomber', g.x + 350, g.y, level);
+    g.enemies.push(e);
+    const from = e.x;
+    for (let i = 0; i < 12; i++) step(g, idle(g));
+    return (from - e.x) / (12 * STEP);
+  };
+  const plain = baseStats();
+  const fast = baseStats({ speed: 345 });
+  check('Tempo der Sprengdrohne: 1,5 × Tempo der Figur, auch mit Upgrade, in Level 1 und 20 gleich',
+    BOMB_SPEED === 1.5 && Math.abs(speedOf(plain, 1) - 1.5 * plain.speed) < 1e-6 && Math.abs(speedOf(plain, 20) - 1.5 * plain.speed) < 1e-6
+    && Math.abs(speedOf(fast, 1) - 1.5 * 345) < 1e-6 && Math.abs(speedOf(fast, 20) - 1.5 * 345) < 1e-6,
+    { plain: speedOf(plain, 1), plain20: speedOf(plain, 20), fast: speedOf(fast, 1), fast20: speedOf(fast, 20) });
+}
+{
+  const g = quiet();
+  const bomber = add(g, 'bomber', 250);
+  const near = add(g, 'hunter', 250, 25);
+  run(g, 0.5, () => ({ fire: true }));
+  check('Abgeschossene Sprengdrohne explodiert nicht: Nachbar und Figur unverletzt, Punkte gibt es',
+    !g.enemies.includes(bomber) && near.hp === 40 && g.hp === 100 && g.score === 120 && g.blasts.every((b) => b.kind !== 'bomb'),
+    { near: near.hp, hp: g.hp, score: g.score, blasts: g.blasts.length });
+}
+{
+  const g = quiet();
+  g.x = g.prevX = 650;
+  const bomber = add(g, 'bomber', 40);
+  bomber.fuse = 0.4; // Lunte brennt schon – wer sie vorher zerstört, bleibt trotzdem ohne Explosion
+  const near = add(g, 'heavy', 110, 70);
+  step(g, idle(g, { kick: true }));
+  run(g, 0.3);
+  check('Auch mit laufender Lunte: Aufprall im Flug zerstört sie ohne Explosion (Punkte als Umgebung ×2)',
+    !g.enemies.includes(bomber) && near.hp === near.maxHp && g.score === 240 && g.blasts.every((b) => b.kind !== 'bomb'),
+    { near: near.hp, score: g.score, blasts: g.blasts.map((b) => b.kind) });
+}
+{
+  const fuseAt = (dist: number, level = 1) => {
+    const g = quiet();
+    const e = makeEnemy('bomber', g.x + dist, g.y, level);
+    e.fuse = 0.05;
+    g.enemies.push(e);
+    const heavy = makeEnemy('heavy', g.x + dist, g.y + 100);
+    g.enemies.push(heavy);
+    run(g, 0.2);
+    return { g, hp: g.hp, heavy: heavy.hp, score: g.score };
+  };
+  const [near, far] = [fuseAt(150), fuseAt(180)];
+  check('Lunte abgelaufen: trifft in 150 px Abstand (Radius 160), in 180 px nicht; keine Punkte',
+    near.hp === 70 && far.hp === 100 && near.score === 0, { near: near.hp, far: far.hp, score: near.score });
+  const [one, six] = [fuseAt(100, 1), fuseAt(100, 6)];
+  check('Explosionsschaden in Level 6 höher als in Level 1: Figur 30 → 40, Gegner 40 → 54',
+    one.hp === 70 && six.hp === 60 && one.heavy === 160 - 40 && six.heavy === 160 - 54, { one, six: { hp: six.hp, heavy: six.heavy } });
+}
+{
+  const g = quiet();
+  g.x = g.prevX = 100;
+  const bomber = add(g, 'bomber', 40);
+  bomber.fuse = 0.5;
+  step(g, idle(g, { kick: true }));
+  run(g, 0.45);
+  const fuseWhileFlying = bomber.fuse;
+  const victim = makeEnemy('hunter', bomber.x, bomber.y + 80);
+  victim.hp = 1;
+  g.enemies.push(victim);
+  run(g, 0.1);
+  check('Gekickt mit laufender Lunte: sie brennt im Flug weiter, explodiert am Ziel, der Kill zählt als Umgebung (100 × 2)',
+    fuseWhileFlying !== null && fuseWhileFlying < 0.1 && g.blasts.some((b) => b.kind === 'bomb') && victim.dead && g.score === 200 && g.hp === 100,
+    { fuse: fuseWhileFlying, score: g.score, hp: g.hp });
+}
+
+console.log('--- Warnton der Sprengdrohne ---');
+{
+  const g = quiet();
+  g.x = g.prevX = 100; // der Kick soll nicht an der Wand enden
+  const none = alarmsOf(g).length;
+  const bomber = add(g, 'bomber', 40);
+  const approaching = alarmsOf(g);
+  step(g, idle(g, { kick: true }));
+  const kicked = alarmsOf(g).length;
+  run(g, 1);
+  const landed = alarmsOf(g).length;
+  bomber.fuse = 0.3;
+  const burning = alarmsOf(g);
+  bomber.hp = 0;
+  step(g, idle(g));
+  const dead = alarmsOf(g).length;
+  check('Alarm: an, solange eine Sprengdrohne lebt und nicht gekickt ist; sonst aus; mit Lunte dringlicher',
+    none === 0 && approaching.length === 1 && approaching[0].kind === 'beep' && approaching[0].urgency === 0
+    && kicked === 0 && landed === 1 && burning[0].urgency > 0.5 && dead === 0,
+    { none, approaching, kicked, landed, burning, dead });
+  const room = quiet();
+  add(room, 'bomber', 300);
+  room.progress = room.plan.goal;
+  step(room, idle(room));
+  const over = quiet();
+  add(over, 'bomber', 300);
+  over.over = true;
+  check('Alarm ist aus, wenn der Raum still ist oder das Spiel zu Ende', alarmsOf(room).length === 0 && room.phase === 'exit' && alarmsOf(over).length === 0);
+}
+{
+  const loops = new AlarmLoops();
+  const calm = [{ kind: 'beep' as const, urgency: 0 }];
+  const beeps = (t: number, active = calm, loop = true) => loops.update(active, t, () => loop).filter((c) => c.action === 'beep').length;
+  const first = beeps(0);
+  const early = beeps(ALARM_INTERVAL[0] - 0.05);
+  const due = beeps(ALARM_INTERVAL[0] + 0.01);
+  const urgent = [{ kind: 'beep' as const, urgency: 1 }];
+  const quick = beeps(ALARM_INTERVAL[0] + 0.01 + ALARM_INTERVAL[1] + 0.01, urgent);
+  const stopped = loops.update([], 5, () => true);
+  const again = loops.update([], 5.1, () => true);
+  check('Schleife: piept sofort, im Takt, dringlicher schneller, und endet sofort, wenn die Bedingung fällt',
+    first === 1 && early === 0 && due === 1 && quick === 1 && stopped.length === 1 && stopped[0].action === 'stop' && again.length === 0,
+    { first, early, due, quick, stopped, again });
+  const once = new AlarmLoops();
+  const count = (t: number, active: typeof calm) => once.update(active, t, () => false).filter((c) => c.action === 'beep').length;
+  const [c0, c1, c2] = [count(0, calm), count(30, calm), count(60, calm)];
+  once.update([], 61, () => false);
+  const c3 = count(62, calm);
+  check('Schleife ausgeschaltet: der Ton ertönt nur einmal beim Angehen, erneut erst nach einer Pause der Bedingung',
+    c0 === 1 && c1 === 0 && c2 === 0 && c3 === 1, { c0, c1, c2, c3 });
 }
 
 console.log('--- Gefahren ---');

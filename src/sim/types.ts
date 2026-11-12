@@ -27,6 +27,15 @@ export type ObjectiveType = 'collect' | 'clear' | 'survive' | 'destroy' | 'boss'
 /** Woher eine Explosion stammt – bestimmt ihr Aussehen. */
 export type BlastKind = 'grenade' | 'barrel' | 'mine' | 'bomb' | 'shield' | 'turret' | 'wreck' | 'revive';
 
+/** Töne, die als Schleife laufen, solange ihre Bedingung gilt. Der Name ist der Eintrag in sounds.json. */
+export type AlarmKind = 'beep';
+
+/** Ein Dauerton, der gerade laufen soll. Die Logik meldet ihn, die Oberfläche spielt ihn. */
+export interface Alarm {
+  kind: AlarmKind;
+  urgency: number; // 0 = ruhig … 1 = höchste Dringlichkeit; der Ton wird schneller und höher
+}
+
 /** Was im Spiel gerade passiert ist – für Ton und Effekte. Die Logik sammelt, die Oberfläche spielt ab. */
 export type GameEvent =
   | 'shoot' | 'charge' | 'beam' | 'dash' | 'kick' | 'jump' | 'slide'

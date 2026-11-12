@@ -127,7 +127,7 @@ nur die Bewegung eingeschränkt haben **[fest]**.
 |---|---|---|---|
 | Jagddrohne | fliegt auf die Figur zu | alles; ideal zum Kicken | 1 |
 | Geschützdrohne | hält Abstand, zielt sichtbar, schießt hoch | ducken, dann hin | 3 |
-| Sprengdrohne | schnell, zündet nahe der Figur; detoniert auch abgeschossen | wegkicken oder auf Abstand abschießen | 4 |
+| Sprengdrohne | läuft mit dem 1,5-fachen Tempo der Figur zu, zündet nahe der Figur, Warnton; explodiert nur durch ihre Lunte | rechtzeitig abschießen oder wegkicken (dann keine Explosion) | 4 |
 | Schilddrohne | blockt Schüsse von vorn, richtet den Schild langsam zur Figur aus; explodiert beim Zerstören | umlaufen, Dash, Kick, Granate; Abstand zur Explosion halten | 6 |
 | Schwerer Mech | viel Leben, viel Masse | Umgebung nutzen, Dauerfeuer | 7 |
 
@@ -143,6 +143,19 @@ dunklen Brandfleck am Boden, der bis zum Wechsel in den nächsten Raum liegen
 bleibt (auch nach erfüllter Aufgabe) und vorerst nur zu sehen ist. Löst sich
 der Raum auf, weil die Aufgabe erfüllt ist, explodiert keine Drohne.
 
+**Sprengdrohne:** Sie läuft immer mit dem 1,5-fachen Höchsttempo der Figur
+(einschließlich Upgrades und Charakter) auf sie zu; ihr Tempo skaliert nicht
+mit dem Level. Nahe der Figur (70 px) zündet sie eine Lunte von 0,6 s und
+explodiert dann mit Radius 160 px; der Schaden wächst mit dem Level. Wer sie
+vorher zerstört – Schuss, Dash, Kick, Aufprall, fremde Explosion –, bekommt die
+Punkte, und sie verschwindet ohne Explosion. Eine gekickte Drohne mit brennender
+Lunte brennt im Flug weiter und explodiert am Ziel; getroffene Gegner zählen
+als Umgebung (×2). Solange mindestens eine Sprengdrohne auf die Figur
+zuläuft (im Raum, lebt, nicht gekickt), piept ein Warnton als Schleife; er
+wird schneller und höher, sobald eine Lunte brennt. Der Ton ist über
+`public/sounds/sounds.json` austauschbar (Name `beep`) und die Schleife je Ton
+abschaltbar.
+
 ### Skalierung mit dem Level **[fest]**
 
 Level ist die Raumnummer. Jeder Gegner bekommt beim Erscheinen Werte, die mit
@@ -157,7 +170,8 @@ dem Level exponentiell wachsen und danach unverändert bleiben:
 Der Schaden gilt für jeden Angriff des Gegners (Berührung, Geschosse,
 Explosion). Das Tempo hat je Typ eine harte Obergrenze, damit kein Verfolger
 dauerhaft schneller wird als die Figur ohne Upgrades (300 px/s): Jagddrohne
-250, Geschützdrohne 170, Schild 190, Sprengdrohne 290, Schwerer Mech 130.
+250, Geschützdrohne 170, Schild 190, Schwerer Mech 130. (Die Sprengdrohne hat
+keine eigene Grenze: Ihr Tempo hängt am Tempo der Figur, siehe unten.)
 Radius, Masse und Punkte skalieren nicht; Gefahren im Raum (Laser, Minen,
 Fässer, Geschütze, Bodenfelder, Zielstrahl) auch nicht. Welche Typen erscheinen,
 wie viele gleichzeitig da sind und wie schnell sie nachkommen, steht in
@@ -331,7 +345,7 @@ Geschützdrohne, Boss und Geschütze greifen öfter an.
 Stand:
 - **Figur [fest]:** City Man (Variante 3, Anzug) in Seitenansicht, gespiegelt nach Zielrichtung, mit getrennt drehbarer Waffe. Cyborg und andere können später als Skin oder eigene Figur in den Shop.
 - **Notlösungen, bis es eigene Animationen gibt:** Kick = Schlag, Sprung und Dash = ein Renn-Bild, Ducken = gestauchtes Bild, Slide = das Hechten-Bild aus der Tod-Animation.
-- **Ton [fest]:** per Code erzeugte Platzhalter, ein Schuss-Sound für alle Waffen. Eigene Dateien lassen sich über `public/sounds/sounds.json` eintragen. Musik kommt später.
+- **Ton [fest]:** per Code erzeugte Platzhalter, ein Schuss-Sound für alle Waffen. Eigene Dateien lassen sich über `public/sounds/sounds.json` eintragen. Dauertöne (Warnton der Sprengdrohne) laufen als Schleife, solange ihre Bedingung gilt; die Logik meldet sie über `alarmsOf` (`src/sim/enemies.ts`), `src/alarmLoop.ts` taktet sie, `src/audio.ts` spielt sie. Musik kommt später.
 - **Darstellung bleibt vorerst Canvas 2D [Vorschlag]:** Sprites, Animationen und Ton gehen damit ohne Umbau. Phaser lohnt erst, wenn Partikel, Kamera oder Kacheln mehr verlangen.
 - Assets liegen unter `public/assets/`. Sie stammen aus Craftpix-Paketen; vor einer Veröffentlichung des Quellcodes die Lizenz prüfen (https://craftpix.net/file-licenses/).
 

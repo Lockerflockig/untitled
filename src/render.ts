@@ -8,7 +8,7 @@ import {
   BANANA_R, BARREL_R, BLAST_TIME, ENEMIES, MINE_R, PLAYER_R as BASE_R, TURRET_R, jumpHeight,
 } from './sim/core.ts';
 import { BULLET_R, KICK_ARC, KICK_REACH } from './sim/player.ts';
-import { BOMB_FUSE, GUNNER_WINDUP, SPAWN_WARN } from './sim/enemies.ts';
+import { BOMB_FUSE, BOMB_RADIUS, GUNNER_WINDUP, SPAWN_WARN } from './sim/enemies.ts';
 import { BEAM_LOCK, FIELD_WARN, LASER_WARN, SHOT_R, TURRET_HP } from './sim/hazards.ts';
 import { ENTRY_X, EXIT_HALF, EXIT_Y, RUN_OUT_TIME, SLIDE_TIME } from './sim/game.ts';
 import { drawEnemySprite, drawExplosionSprite, enemySpriteReady } from './sprites.ts';
@@ -368,7 +368,7 @@ function drawEnemy(ctx: Ctx, g: Game, e: Enemy, time: number) {
 
   if (fusing) {
     // Sprengradius der Sprengdrohne
-    circle(ctx, e.x, e.y, 80 * (1 - (e.fuse ?? 0) / BOMB_FUSE));
+    circle(ctx, e.x, e.y, BOMB_RADIUS * (1 - (e.fuse ?? 0) / BOMB_FUSE));
     ctx.strokeStyle = HEIGHT_COLOR.full;
     ctx.lineWidth = 2;
     ctx.stroke();

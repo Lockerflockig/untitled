@@ -4,7 +4,7 @@
 
 import type { BlastKind, Enemy, EnemyKind, Game } from './sim/types.ts';
 import { ENEMIES } from './sim/core.ts';
-import { BOMB_FUSE, BOSS_WINDUP, GUNNER_WINDUP } from './sim/enemies.ts';
+import { BOMB_FUSE, BOMB_RADIUS, BOSS_WINDUP, GUNNER_WINDUP } from './sim/enemies.ts';
 
 type Ctx = CanvasRenderingContext2D;
 interface Clip { file: string; frames: number; fps: number }
@@ -128,7 +128,7 @@ export function drawEnemySprite(ctx: Ctx, g: Game, e: Enemy, time: number) {
   if (fusing) {
     // Sprengradius der Sprengdrohne
     ctx.beginPath();
-    ctx.arc(e.x, e.y, 80 * (1 - (e.fuse ?? 0) / BOMB_FUSE), 0, Math.PI * 2);
+    ctx.arc(e.x, e.y, BOMB_RADIUS * (1 - (e.fuse ?? 0) / BOMB_FUSE), 0, Math.PI * 2);
     ctx.strokeStyle = '#ff4fd8';
     ctx.lineWidth = 2;
     ctx.stroke();

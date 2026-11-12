@@ -9,7 +9,8 @@ import {
 import { describeOffer, takeOffer } from './sim/loot.ts';
 import type { UpgradeId } from './sim/meta.ts';
 import { VIEW, WALL, draw } from './render.ts';
-import { initAudio, play, toggleMute } from './audio.ts';
+import { initAudio, play, setAlarms, toggleMute } from './audio.ts';
+import { alarmsOf } from './sim/enemies.ts';
 
 type Screen = 'menu' | 'shop' | 'chars' | 'playing' | 'paused' | 'loot' | 'over';
 
@@ -399,6 +400,8 @@ function frame(now: number) {
       setScreen('over');
     }
   }
+  // Dauertöne laufen nur im Spiel; jeder andere Bildschirm beendet sie sofort
+  setAlarms(screen === 'playing' ? alarmsOf(game) : []);
 
   resize();
   draw(ctx, game, screen === 'playing' ? accumulator / STEP : 1, canvas.width, now / 1000);

@@ -3,8 +3,14 @@
 // Eigene Sounds: Datei nach public/sounds/ legen und in public/sounds/sounds.json
 // eintragen, z. B. { "shoot": "pistole.wav", "explode": "boom.ogg" }. Ein
 // eingetragener Sound ersetzt den Platzhalter; alles andere bleibt, wie es ist.
+//
+// Dauertöne (Warnton der Sprengdrohne, Name "beep") laufen als Schleife, solange ihre
+// Bedingung gilt. Statt eines Dateinamens lässt sich ein Objekt eintragen, um die
+// Schleife auszuschalten: { "beep": { "datei": "piep.wav", "schleife": false } } –
+// dann ertönt der Ton nur einmal, wenn er angeht.
 
-import type { GameEvent } from './sim/types.ts';
+import { AlarmLoops } from './alarmLoop.ts';
+import type { Alarm, AlarmKind, GameEvent } from './sim/types.ts';
 
 const VOLUME = 0.25;
 const MIN_GAP = 0.04; // derselbe Sound höchstens alle 40 ms
@@ -18,12 +24,15 @@ try {
 } catch {
   /* ohne Speicher startet der Ton eingeschaltet */
 }
-const custom = new Map<GameEvent, AudioBuffer>();
+const custom = new Map<string, AudioBuffer>();
 const lastPlayed = new Map<GameEvent, number>();
+const loopSetting = new Map<string, boolean>(); // je Ton aus sounds.json: läuft er als Schleife?
+const alarmLoops = new AlarmLoops();
+const sounding = new Map<AlarmKind, Set<AudioScheduledSourceNode>>(); // was von einem Dauerton gerade klingt, damit „stop" es sofort beendet
 
 /** Ton mit Frequenzverlauf von f0 nach f1. */
 function tone(type: OscillatorType, f0: number, f1: number, duration: number, gain: number, delay = 0) {
-  if (!ac || !master) return;
+  if (!ac || !master) return undefined;
   const t = ac.currentTime + delay;
   const osc = ac.createOscillator();
   const env = ac.createGain();
@@ -35,6 +44,7 @@ function tone(type: OscillatorType, f0: number, f1: number, duration: number, ga
   osc.connect(env).connect(master);
   osc.start(t);
   osc.stop(t + duration);
+  return osc;
 }
 
 /** Rauschen durch einen Tiefpass, dessen Grenzfrequenz von f0 nach f1 fährt. */
@@ -86,6 +96,14 @@ const SYNTH: Record<GameEvent, () => void> = {
   die: () => tone('sawtooth', 300, 35, 0.7, 0.7),
 };
 
+/** Platzhalter für Dauertöne; je dringlicher, desto höher (die Taktung kommt aus alarmLoop.ts). */
+const ALARM_SYNTH: Record<AlarmKind, (urgency: number) => AudioScheduledSourceNode | undefined> = {
+  beep: (urgency) => {
+    const f = 740 + 560 * urgency;
+    return tone('square', f, f, 0.09, 0.3);
+  },
+};
+
 /** Muss aus einer Nutzeraktion heraus aufgerufen werden (Browser erlauben Ton erst dann). */
 export function initAudio() {
   if (ac) {
@@ -99,16 +117,22 @@ export function initAudio() {
   void loadCustomSounds(ac);
 }
 
+type SoundEntry = string | { datei?: string; schleife?: boolean };
+
 async function loadCustomSounds(context: AudioContext) {
   try {
-    const list = (await (await fetch('sounds/sounds.json')).json()) as Partial<Record<GameEvent, string>>;
-    for (const [event, file] of Object.entries(list)) {
-      if (!(event in SYNTH) || typeof file !== 'string') continue;
+    const list = (await (await fetch('sounds/sounds.json')).json()) as Record<string, SoundEntry>;
+    for (const [name, entry] of Object.entries(list)) {
+      if (!(name in SYNTH) && !(name in ALARM_SYNTH)) continue;
+      const file = typeof entry === 'string' ? entry : entry?.datei;
+      // Die Schleife lässt sich auch für den Platzhalter ausschalten, ganz ohne eigene Datei
+      if (entry && typeof entry === 'object' && typeof entry.schleife === 'boolean') loopSetting.set(name, entry.schleife);
+      if (typeof file !== 'string') continue;
       try {
         const data = await (await fetch(`sounds/${file}`)).arrayBuffer();
-        custom.set(event as GameEvent, await context.decodeAudioData(data));
+        custom.set(name, await context.decodeAudioData(data));
       } catch {
-        console.warn(`Sound "${file}" für "${event}" ließ sich nicht laden – Platzhalter bleibt.`);
+        console.warn(`Sound "${file}" für "${name}" ließ sich nicht laden – Platzhalter bleibt.`);
       }
     }
   } catch {
@@ -129,6 +153,53 @@ export function play(event: GameEvent) {
     src.start();
   } else {
     SYNTH[event]();
+  }
+}
+
+/** Einen Piepton eines Dauertons spielen; eine eigene Datei klingt mit der Dringlichkeit schneller und höher. */
+function beep(kind: AlarmKind, urgency: number) {
+  if (!ac || !master) return;
+  const buffer = custom.get(kind);
+  let src: AudioScheduledSourceNode | undefined;
+  if (buffer) {
+    const file = ac.createBufferSource();
+    file.buffer = buffer;
+    file.playbackRate.value = 1 + 0.5 * urgency;
+    file.connect(master);
+    file.start();
+    src = file;
+  } else {
+    src = ALARM_SYNTH[kind](urgency);
+  }
+  if (!src) return;
+  const playing = src;
+  const running = sounding.get(kind) ?? new Set<AudioScheduledSourceNode>();
+  sounding.set(kind, running);
+  running.add(playing);
+  playing.onended = () => running.delete(playing);
+}
+
+/** Beendet sofort, was von diesem Dauerton noch klingt. */
+function silence(kind: AlarmKind) {
+  for (const src of sounding.get(kind) ?? []) {
+    try {
+      src.stop();
+    } catch {
+      /* war schon zu Ende */
+    }
+  }
+  sounding.get(kind)?.clear();
+}
+
+/**
+ * Jeden Frame aufrufen: die Dauertöne, die jetzt laufen sollen (außerhalb des Spiels eine
+ * leere Liste – dann endet alles sofort, auch bei Pause, Beute-Auswahl und Spielende).
+ */
+export function setAlarms(active: Alarm[]) {
+  if (!ac || !master) return;
+  for (const c of alarmLoops.update(active, ac.currentTime, (kind) => loopSetting.get(kind) ?? true)) {
+    if (c.action === 'stop') silence(c.kind);
+    else beep(c.kind, c.urgency);
   }
 }
 
