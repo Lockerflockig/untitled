@@ -40,7 +40,7 @@ Abnahme-Prüfungen bestehen; dann den Kopf der Datei und diese Tabelle auf
 
 | Nr. | Aufgabe | Voraussetzung | Status |
 |---|---|---|---|
-| 01 | [Gegner skalieren mit dem Level](01-gegner-skalierung.md) | – | erledigt (ohne Boss-Anteile) |
+| 01 | [Gegner skalieren mit dem Level](01-gegner-skalierung.md) | – | erledigt |
 | 02 | [Schilddrohne](02-schilddrohne.md) | 01 | erledigt bis auf die Reflexion (Planer) |
 | 03 | [Sprengdrohne](03-sprengdrohne.md) | 01 | erledigt |
 | 04 | [Jagddrohne](04-jagddrohne.md) | 01 | erledigt |

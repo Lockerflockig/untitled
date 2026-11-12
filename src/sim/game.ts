@@ -20,7 +20,6 @@ const POINTS_ROOM = 500;
 const NO_HIT_BONUS = 1.5; // Faktor auf den Raum-Bonus, wenn man nicht getroffen wurde
 const REVIVE_SHIELD = 2;
 const BOSS_EVERY = 5;
-const BOSS_HP_GROWTH = 0.5; // je weiterem Boss-Raum so viel mehr Trefferpunkte
 
 // --- Was mit dem Level steigt ----------------------------------------------------
 // Level ist die Raumnummer. Leben, Tempo und Schaden jedes Gegners wachsen in
@@ -132,10 +131,8 @@ function enterRoom(g: Game, n: number) {
     for (let i = 0; i < BANANAS_ON_FIELD; i++) g.bananas.push(spot(g, 50, 150));
   }
   if (g.plan.objective === 'boss') {
-    // Der Boss gehört zu Aufgabe 06 und skaliert noch nicht mit dem Level: Er erscheint
-    // wie bisher mit den Werten aus Level 1 und seinem eigenen Zuwachs (BOSS_HP_GROWTH).
-    const boss = makeEnemy('boss', ARENA - 160, ARENA / 2, 1);
-    boss.hp = boss.maxHp = Math.round(boss.maxHp * (1 + BOSS_HP_GROWTH * (n / BOSS_EVERY - 1)));
+    // Der Boss skaliert wie alle über sein Level (die Raumnummer): Level 5 hat 900 Trefferpunkte
+    const boss = makeEnemy('boss', ARENA - 160, ARENA / 2, n);
     boss.cooldown = 2.5;
     g.enemies.push(boss);
   }

@@ -6,7 +6,7 @@ import {
   BARREL_R, ENEMIES, PLAYER_R, TURRET_R, clampTo, damageEnemy, enemyStats, explode, hurtPlayer, scaledDamage,
   scoreKill, spot,
 } from './core.ts';
-import { FIELD_ACTIVE, FIELD_RADIUS, FIELD_WARN } from './hazards.ts';
+import { FIELD_ACTIVE, FIELD_DAMAGE, FIELD_ENEMY_DAMAGE, FIELD_RADIUS, FIELD_WARN } from './hazards.ts';
 
 export const SPAWN_WARN = 0.9; // so lange kündigt sich ein Gegner an
 const SPAWN_DISTANCE = 280; // Mindestabstand zur Figur
@@ -67,7 +67,7 @@ export const BOSS_WINDUP = 0.7; // kündigt jeden Angriff an
 const BOSS_FAN = 7; // Geschosse pro Fächer
 const BOSS_FAN_STEP = 0.17; // rad zwischen zwei Geschossen
 const BOSS_SHOT_SPEED = 300;
-const BOSS_SHOT_DAMAGE = 15;
+const BOSS_SHOT_DAMAGE = 15; // in Level 1; Geschosse und Bodenfelder des Bosses merken sich ihren Schaden mit seinem Level
 
 function pickKind(g: Game): EnemyKind {
   const total = g.plan.mix.reduce((sum, [, weight]) => sum + weight, 0);
@@ -217,7 +217,7 @@ export function stepEnemies(g: Game) {
                   g.shots.push({
                     x: e.x + Math.cos(a) * def.r, y: e.y + Math.sin(a) * def.r,
                     vx: Math.cos(a) * BOSS_SHOT_SPEED, vy: Math.sin(a) * BOSS_SHOT_SPEED,
-                    damage: BOSS_SHOT_DAMAGE,
+                    damage: scaledDamage(BOSS_SHOT_DAMAGE, e.level),
                   });
                 }
               } else {
@@ -228,6 +228,7 @@ export function stepEnemies(g: Game) {
                     x: clampTo(g.x + Math.cos(a) * 75, FIELD_RADIUS),
                     y: clampTo(g.y + Math.sin(a) * 75, FIELD_RADIUS),
                     r: FIELD_RADIUS, warn: FIELD_WARN, active: FIELD_ACTIVE,
+                    damage: scaledDamage(FIELD_DAMAGE, e.level), enemyDamage: scaledDamage(FIELD_ENEMY_DAMAGE, e.level),
                   });
                 }
               }

@@ -202,6 +202,8 @@ export interface Field {
   r: number;
   warn: number;
   active: number;
+  damage?: number; // an der Figur; das Feld merkt ihn sich beim Entstehen (Boss: skaliert). Fehlt er, gilt FIELD_DAMAGE.
+  enemyDamage?: number; // an Gegnern beim Auslösen; fehlt er, gilt FIELD_ENEMY_DAMAGE
 }
 
 export interface Mine {

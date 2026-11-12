@@ -319,6 +319,37 @@ console.log('--- Skalierung mit dem Level ---');
     && roomPlan(5).spawnEvery === 4, [1, 4, 9, 19, 5].map((n) => [roomPlan(n).maxEnemies, roomPlan(n).spawnEvery]));
 }
 
+{
+  const boss = (room: number) => newGame(baseStats(), room).enemies.find((e) => e.kind === 'boss')!;
+  check('Boss: Level 5 hat 900 Trefferpunkte, Level 10 nach der Formel (1450), Level = Raumnummer',
+    boss(5).maxHp === 900 && boss(10).maxHp === 1450 && boss(10).level === 10 && boss(15).maxHp > boss(10).maxHp,
+    { five: boss(5).maxHp, ten: boss(10).maxHp });
+  check('Boss: Tempo und Berührungsschaden wachsen mit, Tempo bleibt unter 80 px/s',
+    boss(5).speed === 59 && boss(10).damage === 51 && enemyStats('boss', 100).speed === 80, { speed: boss(5).speed, damage: boss(10).damage });
+  const firstShot = (room: number) => {
+    const g = newGame(baseStats(), room);
+    g.barrels = [];
+    g.turrets = []; // ab Raum 8 steht im Boss-Raum ein Geschütz, dessen Schüsse nicht zählen sollen
+    g.laserTimer = g.spawnTimer = 1e9;
+    for (let i = 0; i < 600 && g.shots.length === 0; i++) step(g, idle(g));
+    return g.shots[0]?.damage;
+  };
+  const firstField = (room: number) => {
+    const g = newGame(baseStats(), room);
+    g.barrels = [];
+    g.turrets = []; // ab Raum 8 steht im Boss-Raum ein Geschütz, dessen Schüsse nicht zählen sollen
+    g.laserTimer = g.spawnTimer = 1e9;
+    g.enemies.find((e) => e.kind === 'boss')!.mode = 1; // beginnt mit den Bodenfeldern
+    for (let i = 0; i < 600 && g.fields.length === 0; i++) step(g, idle(g));
+    return g.fields[0];
+  };
+  const [shot5, shot10] = [firstShot(5), firstShot(10)];
+  const [field5, field10] = [firstField(5), firstField(10)];
+  check('Boss-Geschosse und Boss-Bodenfelder merken sich ihren Schaden mit dem Level des Bosses (Geschoss 19 → 25, Feld 25 → 34)',
+    shot5 === 19 && shot10 === 25 && field5?.damage === 25 && field10?.damage === 34 && field10?.enemyDamage === 51,
+    { shot5, shot10, field5, field10 });
+}
+
 console.log('--- Schilddrohne ---');
 {
   check('Der Typ heißt im Spiel Schilddrohne', ENEMIES.shield.name === 'Schilddrohne');
@@ -755,7 +786,7 @@ console.log('--- Räume ---');
   run(g, 0.5, (g) => ({ fire: true, duck: true }));
   check('Boss besiegt: 2000 Punkte × Raum-Multiplikator, Ausgang öffnet sich', g.phase === 'exit' && g.kills === 1 && g.score >= 2000 * 2,
     { phase: g.phase, kills: g.kills, score: g.score });
-  check('Zweiter Boss hat mehr Trefferpunkte', newGame(baseStats(), 10).enemies[0].maxHp === 1350);
+  check('Zweiter Boss hat mehr Trefferpunkte, nach der Formel (Level 10: 615 × 1,1⁹)', newGame(baseStats(), 10).enemies[0].maxHp === Math.round(615 * 1.1 ** 9));
 }
 {
   const g = quiet();

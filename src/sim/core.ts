@@ -33,8 +33,8 @@ export const ENEMIES: Record<EnemyKind, EnemyDef> = {
   // Sprengdrohne: Das Tempo steht nicht hier, sondern ergibt sich aus dem der Figur (BOMB_SPEED in enemies.ts)
   bomber: { name: 'Sprengdrohne', r: 13, hp: 20, speed: 0, speedMax: 0, damage: 0, mass: 0.8, points: 120 },
   heavy: { name: 'Schwerer Mech', r: 25, hp: 160, speed: 88, speedMax: 130, damage: 30, mass: 4, points: 400 },
-  // Boss: so schwer, dass ein Kick ihn praktisch nicht bewegt
-  boss: { name: 'Panzer', r: 46, hp: 900, speed: 52, speedMax: 80, damage: 30, mass: 12, points: 2000 },
+  // Boss: so schwer, dass ein Kick ihn praktisch nicht bewegt. Grundwert fürs Leben so gewählt, dass er in Level 5 (erster Boss) 900 hat.
+  boss: { name: 'Panzer', r: 46, hp: 615, speed: 52, speedMax: 80, damage: 30, mass: 12, points: 2000 },
 };
 
 // Skalierung mit dem Level (= Raumnummer, beginnend bei 1): je Level wächst der Wert um

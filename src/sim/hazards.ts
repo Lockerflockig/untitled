@@ -29,8 +29,8 @@ const BEAM_DAMAGE = 30;
 export const FIELD_WARN = 1.0;
 export const FIELD_ACTIVE = 0.35;
 export const FIELD_RADIUS = 70;
-const FIELD_DAMAGE = 20;
-const FIELD_ENEMY_DAMAGE = 30;
+export const FIELD_DAMAGE = 20; // an der Figur; Felder des Bosses skalieren mit seinem Level, die aus dem Raum nicht
+export const FIELD_ENEMY_DAMAGE = 30; // an Gegnern
 
 // Mine (niedrig)
 const MINE_TRIGGER = 45;
@@ -182,13 +182,13 @@ export function stepHazards(g: Game) {
       if (f.warn <= 0) {
         // Gegner trifft es einmal beim Auslösen
         for (const e of g.enemies) {
-          if (Math.hypot(e.x - f.x, e.y - f.y) < f.r) damageEnemy(e, FIELD_ENEMY_DAMAGE, 'env');
+          if (Math.hypot(e.x - f.x, e.y - f.y) < f.r) damageEnemy(e, f.enemyDamage ?? FIELD_ENEMY_DAMAGE, 'env');
         }
       }
       return true;
     }
     f.active -= STEP;
-    if (Math.hypot(g.x - f.x, g.y - f.y) < f.r && heightHits('low', level)) hurtPlayer(g, FIELD_DAMAGE);
+    if (Math.hypot(g.x - f.x, g.y - f.y) < f.r && heightHits('low', level)) hurtPlayer(g, f.damage ?? FIELD_DAMAGE);
     return f.active > 0;
   });
 
