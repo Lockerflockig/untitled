@@ -1,6 +1,10 @@
 # 07 – Fernkämpfer mit den Waffen der Figur
 
-Status: offen · baut auf 01 und auf P1 (Planer) auf
+Status: **gesperrt** · baut auf 01 und auf P1 (Planer) auf
+
+> **STOPP für den umsetzenden Agenten:** Diese Aufgabe nicht beginnen und
+> nichts dafür vorbereiten. Sie ist erst frei, wenn der Planer P1 erledigt und
+> den Status hier auf „offen" gesetzt hat.
 
 ## Ziel
 
@@ -83,3 +87,7 @@ Waffe aus `WEAPONS` in eine Richtung abfeuert.
 ## Aufgefallen
 
 (vom umsetzenden Agenten auszufüllen)
+
+## Übergabe an den Planer
+
+(vom umsetzenden Agenten auszufüllen: umgesetzte und bewusst ausgelassene Regeln; neue Felder, Funktionen und Konstanten mit Datei; geänderte Prüfungen; was im Browser angesehen wurde)

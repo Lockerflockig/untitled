@@ -2,6 +2,11 @@
 
 Status: offen · baut auf 01 auf
 
+> **STOPP für den umsetzenden Agenten:** Umgesetzt werden nur die Regeln 1–3
+> und 10–16. Vor der Reflexion (Regeln 4–9) ist Schluss – sie gehört dem
+> Planer. `g.bullets` und `g.shots` bleiben getrennt, der Schild schluckt
+> Projektile weiter wie bisher.
+
 ## Ziel
 
 Die erste einzeln überarbeitete Gegnerklasse. Aus dem bisherigen „Schild-Mech"
@@ -100,3 +105,7 @@ Für den Planer, zusammen mit der Reflexion:
 ## Aufgefallen
 
 (vom umsetzenden Agenten auszufüllen)
+
+## Übergabe an den Planer
+
+(vom umsetzenden Agenten auszufüllen: umgesetzte und bewusst ausgelassene Regeln; neue Felder, Funktionen und Konstanten mit Datei; geänderte Prüfungen; was im Browser angesehen wurde)

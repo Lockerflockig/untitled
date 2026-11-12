@@ -43,3 +43,7 @@ Die bestehenden Prüfungen zu niedrigen und hohen Lasern bleiben, solange `heigh
 ## Aufgefallen
 
 (vom umsetzenden Agenten auszufüllen)
+
+## Übergabe an den Planer
+
+(vom umsetzenden Agenten auszufüllen: umgesetzte und bewusst ausgelassene Regeln; neue Felder, Funktionen und Konstanten mit Datei; geänderte Prüfungen; was im Browser angesehen wurde)

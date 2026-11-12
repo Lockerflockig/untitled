@@ -11,6 +11,27 @@ Passiven (Modulen) und Waffen finden können, deren Zusammenspiel viel bewirkt.
 Im Zweifel also: Gegner gefährlich lassen und dem Spieler starke Werkzeuge
 geben, statt beides abzuschwächen.
 
+## Stopp-Punkte – hier hört der umsetzende Agent auf
+
+Diese Stellen sind verbindlich. Dahinter arbeitet der Planer weiter.
+
+1. **Nach Aufgabe 06 ist Schluss.** Aufgabe 07 nicht beginnen, auch nicht vorbereiten. Sie wartet auf P1.
+2. **P1 und P2 nicht anfassen.** Die beiden Listen `g.bullets` und `g.shots` bleiben getrennt, wie sie sind. Keine gemeinsame Projektil-Struktur einführen, kein Besitzer-Feld, keine Funktion, mit der Gegner Waffen aus `WEAPONS` abfeuern.
+3. **In Aufgabe 02 vor der Reflexion stoppen.** Umgesetzt werden Name, Ausrichtung, Explosion und Spuren (Regeln 1–3 und 10–16). Die Regeln 4–9 bleiben liegen; der Schild schluckt Projektile weiter wie bisher.
+4. **Nach jeder Aufgabe anhalten und übergeben:** Prüfungen und Build laufen lassen, committen, Status in der Aufgaben-Datei und in der Tabelle unten setzen, den Abschnitt „Übergabe an den Planer" ausfüllen. Dann erst die nächste Aufgabe beginnen.
+5. **Nichts aus „Vorgemerkt" umsetzen** und keine offenen Fragen selbst entscheiden – nach der Vorgabe bauen und die Frage stehen lassen.
+6. **Bei Zweifeln stoppen statt raten:** Passt eine Regel nicht zum Bestand oder widerspricht sie einer anderen Aufgabe, die Aufgabe an dieser Stelle abbrechen, den Stand committen und das Problem unter „Aufgefallen" beschreiben.
+
+### Übergabe an den Planer
+
+Jede Aufgaben-Datei endet mit diesem Abschnitt. Der umsetzende Agent trägt
+dort ein:
+
+- welche Regeln umgesetzt sind und welche bewusst nicht,
+- neue Felder, Funktionen und Konstanten, an die der Planer anknüpfen kann (Name und Datei),
+- welche bestehenden Prüfungen geändert wurden und warum,
+- was im Browser angesehen wurde und was nicht.
+
 ## Reihenfolge
 
 Die Dateien sind nummeriert. Eine Aufgabe ist erledigt, wenn ihre
@@ -25,7 +46,7 @@ Abnahme-Prüfungen bestehen; dann den Kopf der Datei und diese Tabelle auf
 | 04 | [Jagddrohne](04-jagddrohne.md) | 01 | offen |
 | 05 | [Laser vereinfachen](05-laser-vereinfachen.md) | – | offen |
 | 06 | [Boss: Panzer](06-boss-panzer.md) | 01, 03 | offen |
-| 07 | [Fernkämpfer mit Waffen](07-fernkaempfer.md) | 01, P1 | wartet auf P1 |
+| 07 | [Fernkämpfer mit Waffen](07-fernkaempfer.md) | 01, P1 | **gesperrt** – wartet auf P1, nicht beginnen |
 
 01 und 05 können sofort beginnen. 02, 03 und 04 fassen alle
 `src/sim/enemies.ts` an und sollten nacheinander laufen, nicht gleichzeitig.
