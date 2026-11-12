@@ -49,7 +49,9 @@ umsetzen, bis es eine eigene Aufgaben-Datei gibt.
 
 - **Spawn-Vorräte:** wie viele Fernkämpfer auf wie viele Nahkämpfer kommen, welche Mischung in welchem Level.
 - **Mehr Gegner mit höherem Level:** Mengen und Erscheinungsrate neu festlegen.
-- **Übrige Gegnerklassen** einzeln überarbeiten: Schwerer Mech.
+- **Schwerer Mech:** noch gar nicht überarbeitet; braucht eine Angriffsanimation wie die Jagddrohne (Aufgabe 04) statt Berührungsschaden.
+- **Schilddrohne:** braucht ebenfalls eine Angriffsanimation statt Berührungsschaden; Aufgabe 02 deckt das noch nicht ab.
+- **Boss ohne eigenes Fahren:** in Aufgabe 06 so festgelegt, muss getestet werden.
 - **Geschütze, Minen, Fässer, Bodenfelder, Zielstrahl:** Skalierung und Überarbeitung.
 - **Loot-System** weiter ausarbeiten.
 - **Eigene Explosionen** können auch der Figur schaden.

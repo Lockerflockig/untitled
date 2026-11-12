@@ -29,6 +29,7 @@ bereitet eine spätere Parry-Mechanik vor.
 5. **Alle Werte skalieren** mit dem Level (Aufgabe 01): Leben, Schaden, Tempo. **Das Tempo hat eine harte Obergrenze** (Aufgabe 01, 250 px/s).
 6. Die Dauer der Phasen und die Reichweite skalieren nicht.
 7. Gekickte und fliegende Drohnen greifen nicht an (wie bisher).
+8. **Nur die Jagddrohne ist Teil dieser Aufgabe.** Schilddrohne und Schwerer Mech bekommen ebenfalls eine Angriffsanimation, aber in eigenen Aufgaben (vorgemerkt in `LIESMICH.md`); bis dahin verletzen sie weiter durch Berührung. Den Angriff deshalb so bauen, dass andere Nahkämpfer ihn mit eigenen Werten übernehmen können.
 
 ## Darstellung
 
@@ -49,7 +50,6 @@ Bestehende Prüfungen, die den Berührungsschaden der Jagddrohne als Mittel nutz
 
 | Frage | Vorgabe, nach der gebaut wird |
 |---|---|
-| Gilt die Angriffsanimation nur für die Jagddrohne oder auch für Schilddrohne und Schweren Mech, die heute ebenfalls durch Berührung verletzen? | nur Jagddrohne; die anderen folgen bei ihrer eigenen Überarbeitung |
 | Sind 0,35 s Ausholen genug Zeit zum Reagieren? | ja, als Startwert |
 
 ## Aufgefallen

@@ -31,7 +31,8 @@ Das ist die Grundlage dafür, jede Gegnerklasse danach einzeln zu überarbeiten
    | Tempo | Grundwert × 1,03^(n − 1) | je Typ, siehe unten (harte Grenze) |
 
    Ergebnisse auf ganze Zahlen runden. Die drei Wachstumsfaktoren sind
-   benannte Konstanten. Zur Einordnung: Leben ist in Level 10 das 2,4-fache,
+   benannte Konstanten an einer Stelle; an ihnen wird im Balancing gedreht,
+   sobald getestet ist. Zur Einordnung: Leben ist in Level 10 das 2,4-fache,
    in Level 20 das 6,1-fache; Schaden in Level 10 das 1,7-fache, in Level 20
    das 3,0-fache.
 4. **Tempo-Obergrenze je Typ** (px/s). Kein Verfolger darf dauerhaft schneller sein als die Figur ohne Upgrades (300):
@@ -71,7 +72,6 @@ Das ist die Grundlage dafür, jede Gegnerklasse danach einzeln zu überarbeiten
 
 | Frage | Vorgabe, nach der gebaut wird |
 |---|---|
-| Sind die Wachstumsfaktoren 1,10 / 1,06 / 1,03 passend? | ja, als Startwerte; das Balancing kommt später |
 | Gilt die Tempo-Obergrenze je Typ oder ein einziger Wert für alle? | je Typ |
 | Sollen Angriffsfrequenz und Geschosstempo ebenfalls skalieren? | nein, erst bei der Überarbeitung der jeweiligen Klasse |
 | Skaliert auch der Schaden der Gefahren im Raum (Laser, Minen …)? | nein, eigene Aufgabe |

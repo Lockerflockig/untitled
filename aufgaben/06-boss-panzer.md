@@ -15,8 +15,8 @@ Verhaltens. Mit jedem Boss-Level kommt eine dazu: Level 5, 10 und 15.
 ## Regeln
 
 ### Grundsätzliches
-1. **Der Panzer fährt nicht mehr von sich aus.** Seine einzigen Bewegungen sind der Charge und der Sprung beim taktischen Rückzug.
-2. **Fähigkeiten je Boss-Level:**
+1. **Der Panzer fährt nicht mehr von sich aus [fest, unter Vorbehalt].** Seine einzigen Bewegungen sind der Charge und der Sprung beim taktischen Rückzug. Das muss im Spiel getestet werden; die Stelle deshalb so bauen, dass sich ein langsames Fahren leicht wieder einschalten lässt (eine Konstante).
+2. **Fähigkeiten je Boss-Level [fest]:**
 
    | Boss-Level | Fähigkeiten |
    |---|---|
@@ -26,7 +26,8 @@ Verhaltens. Mit jedem Boss-Level kommt eine dazu: Level 5, 10 und 15.
 
 3. Der Panzer setzt seine Fähigkeiten nacheinander ein, mit einer Pause dazwischen (Startwert 1,5 s). Hat er mehrere, wechselt er sie ab; dieselbe kommt nicht zweimal hintereinander.
 4. **Alle Werte skalieren** mit dem Level (Aufgabe 01): Leben und jeder Schaden. Dauern, Reichweiten und Tempo des Charge skalieren nicht.
-5. Der bisherige Fächer und die Bodenfelder entfallen (siehe offene Fragen).
+5. **Die bisherigen Angriffe bleiben zusätzlich [fest]:** Fächer hoher Geschosse und drei Bodenfelder. Sie reihen sich in den Wechsel der Fähigkeiten ein wie eine weitere Fähigkeit; in Level 5 wechselt der Panzer also zwischen Charge, Fächer und Bodenfeldern.
+6. **Einfärbung je Stufe [fest]:** Der Panzer ist leicht eingefärbt, damit man die Stufe erkennt – Level 5 grünlich, Level 10 lila, ab Level 15 rot.
 
 ### Charge
 6. **Aufladen:** Der Panzer bleibt stehen und zeigt, wohin er fahren wird: eine Bahn in seiner Breite bis zur Wand, dazu eine Ladeleiste, die sich füllt. Dauer 1,2 s. Die Bahn folgt der Figur bis kurz vor Schluss und rastet in den letzten 0,3 s ein.
@@ -62,11 +63,13 @@ Verhaltens. Mit jedem Boss-Level kommt eine dazu: Level 5, 10 und 15.
 - **Sendemast:** per Code gezeichnet (Mast mit pulsierendem Ring), Lebensleiste, darüber die verbleibenden Sekunden bis zum Schwarm.
 - **Schwarm:** die übliche Ankündigung der Gegner (Ring), am Rand des Raums.
 - **Rückzug:** Kegel am Boden, der sich in 0,5 s füllt.
+- **Einfärbung:** Das Sprite wird je Stufe leicht getönt (grünlich, lila, rot), ohne die Zeichnung zu überdecken; ohne Sprite hat der Ersatzkreis die Stufenfarbe.
 - Der Name der laufenden Fähigkeit erscheint kurz über dem Panzer: „Chaaaarge!!!", „Call Backup!", „Taktischer Rückzug!!!".
 
 ## Abnahme-Prüfungen (in `tests/rules.ts`)
 
-- In Level 5 setzt der Panzer nur den Charge ein; in Level 10 auch Call Backup; in Level 15 alle drei.
+- In Level 5 setzt der Panzer neben Fächer und Bodenfeldern nur den Charge ein; in Level 10 auch Call Backup; in Level 15 alle drei.
+- Die Stufenfarbe ist in Level 5, 10 und 15 jeweils eine andere; Level 20 hat die von Level 15.
 - Zwischen den Fähigkeiten bewegt er sich nicht.
 - Charge: Während des Aufladens gibt es keinen Schaden; danach wird die Figur in der Bahn getroffen, neben der Bahn nicht; ein Dash durch die Bahn schützt. Nach dem Aufprall ist er 1 s lang untätig.
 - Call Backup: Der Mast steht in der Raummitte und hat 35 % des maximalen Lebens des Panzers. Nach 5 s erscheinen mindestens 15 Gegner. Wird der Mast vorher zerstört, erscheint keiner.
@@ -80,9 +83,6 @@ Die bestehenden Boss-Prüfungen beschreiben das alte Verhalten und werden ersetz
 
 | Frage | Vorgabe, nach der gebaut wird |
 |---|---|
-| Kommt je Boss-Level eine Fähigkeit dazu, oder hat der Panzer ab Level 5 alle drei? | je Boss-Level eine dazu |
-| Entfallen der alte Fächer und die Bodenfelder ganz? | ja |
-| In Level 5 hat der Panzer nur den Charge. Ist das genug, oder braucht er dort einen zweiten Angriff? | genug, zusammen mit den Begleitern |
 | Bleiben die wenigen Jagddrohnen als Begleiter im Boss-Raum? | ja, wie bisher |
 | Was passiert mit Boss-Räumen nach Level 15 (20, 25 …)? | derselbe Panzer mit allen drei Fähigkeiten, weiter skaliert |
 | Trifft der Kegelschuss auch andere Gegner? | nein |

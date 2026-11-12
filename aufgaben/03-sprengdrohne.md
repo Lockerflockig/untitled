@@ -16,7 +16,7 @@ rechtzeitig tötet, wird belohnt – dann explodiert sie nicht.
 
 ## Regeln
 
-1. **Tempo: das 1,5-fache des Tempos der Figur.** Maßgeblich ist das aktuelle Höchsttempo der Figur (`g.stats.speed`, also einschließlich Upgrades und Charakter). Das Tempo der Sprengdrohne skaliert deshalb **nicht** mit dem Level und hat keine eigene Obergrenze.
+1. **Tempo: das 1,5-fache des Tempos der Figur [fest].** Die Sprengdrohne ist immer schneller als die Figur. Maßgeblich ist das aktuelle Höchsttempo der Figur (`g.stats.speed`, also einschließlich Upgrades und Charakter). Das Tempo der Sprengdrohne skaliert deshalb **nicht** mit dem Level und hat keine eigene Obergrenze.
 2. **Keine Explosion, wenn die Figur sie tötet.** Stirbt die Sprengdrohne durch Schaden, bevor ihre Lunte abläuft, verschwindet sie ohne Explosion. Das gilt für jede Schadensquelle (Schuss, Dash, Kick, Aufprall, Laser nach Kick, fremde Explosion). Punkte gibt es wie bisher.
 3. **Explosion nur durch die eigene Lunte.** Läuft die Lunte ab, explodiert sie wie bisher und gibt keine Punkte.
 4. **Sprengradius verdoppelt:** 160 px statt 80 px. Der Auslöse-Abstand (70 px) und die Lunte (0,6 s) bleiben.
@@ -28,7 +28,7 @@ rechtzeitig tötet, wird belohnt – dann explodiert sie nicht.
 7. **Solange mindestens eine Sprengdrohne auf die Figur zuläuft, ertönt ein Piepton.** „Zuläuft" heißt: Sie ist im Raum, lebt, ist nicht gekickt.
 8. Der Ton ist **austauschbar** über `public/sounds/sounds.json` wie alle anderen (Name `beep`). Ohne eigene Datei gibt es einen per Code erzeugten Piepton.
 9. **Der Ton läuft als Schleife**, solange die Bedingung gilt, und endet sofort, wenn sie nicht mehr gilt (auch bei Pause, Beute-Auswahl und Spielende).
-10. **Die Schleife lässt sich ausschalten.** Dann ertönt der Ton nur einmal, wenn die erste Sprengdrohne erscheint.
+10. **Die Schleife lässt sich ausschalten – je Ton in `sounds.json` [fest].** Dann ertönt der Ton nur einmal, wenn die erste Sprengdrohne erscheint.
 11. Mit laufender Lunte wird der Piepton schneller oder höher, damit man die Zündung hört.
 12. Die Schleifen-Logik wird so gebaut, dass weitere Quellen sie mit eigenem Ton nutzen können (der Sendemast des Bosses in Aufgabe 06).
 
@@ -56,8 +56,6 @@ Die bestehende Prüfung „Abgeschossene Sprengdrohne reißt Nachbarn mit" besch
 
 | Frage | Vorgabe, nach der gebaut wird |
 |---|---|
-| Bezieht sich „Player Speed × 1,5" auf das aktuelle Tempo der Figur mit Upgrades oder auf den Grundwert 300? | aktuelles Tempo mit Upgrades |
-| Wo schaltet man die Schleife aus – in `sounds.json` oder als Einstellung im Menü? | in `sounds.json`, je Ton |
 | Explodiert sie auch dann nicht, wenn sie mit laufender Lunte getötet wird? | richtig, dann auch nicht |
 
 ## Aufgefallen

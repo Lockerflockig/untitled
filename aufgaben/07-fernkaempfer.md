@@ -25,7 +25,7 @@ Waffe aus `WEAPONS` in eine Richtung abfeuert.
 ## Regeln
 
 1. **Klassen nach Waffe.** Ein Fernkämpfer führt genau eine Waffe und behält sie.
-2. **Reihenfolge, in der die Klassen freigeschaltet werden:**
+2. **Reihenfolge, in der die Klassen freigeschaltet werden [fest]:**
 
    | Stufe | Waffe | ab Level |
    |---|---|---|
@@ -55,8 +55,9 @@ Waffe aus `WEAPONS` in eine Richtung abfeuert.
 6. **Jeder Schuss kündigt sich an** (Zielen wie bisher, Startwert 0,4 s; beim Schwerlaser die Ladezeit des Strahls).
 7. **Höhe:** Geschosse von Fernkämpfern fliegen weiter auf Höhe „hoch" und lassen sich unterducken, solange es Ducken gibt. Strahl und Explosionen treffen auf jeder Höhe.
 8. Eigene Explosionen der Fernkämpfer (Granate) treffen die Figur und andere Gegner.
-9. Die bisherige Geschützdrohne ist die Klasse „Pistole" und bleibt in ihren Werten, soweit diese Aufgabe nichts anderes sagt.
-10. Welche Klasse erscheint, wird unter den freigeschalteten ausgewürfelt. Wie viele Fernkämpfer auf wie viele Nahkämpfer kommen, wird später eigens festgelegt; bis dahin bleibt das heutige Gewicht der Geschützdrohne im Raum.
+9. **Fernkämpfer verletzen nicht durch Berührung [fest]**, in keiner Klasse.
+10. Die bisherige Geschützdrohne ist die Klasse „Pistole" und bleibt in ihren Werten, soweit diese Aufgabe nichts anderes sagt.
+11. Welche Klasse erscheint, wird unter den freigeschalteten ausgewürfelt. Wie viele Fernkämpfer auf wie viele Nahkämpfer kommen, wird später eigens festgelegt; bis dahin bleibt das heutige Gewicht der Geschützdrohne im Raum.
 
 ## Darstellung
 
@@ -76,8 +77,6 @@ Waffe aus `WEAPONS` in eine Richtung abfeuert.
 
 | Frage | Vorgabe, nach der gebaut wird |
 |---|---|
-| Deine Liste nennt „Lvl 1 bis 7" für die Waffen, davor steht „alle 5 Lvl". Ich lese die Liste als Stufen, die alle fünf Level freigeschaltet werden. | so wie in der Tabelle oben |
-| Beginnt Stufe 2 bei Level 5 oder bei Level 6 (also nach dem ersten Boss)? | Level 5 |
 | Reihenfolge ab Stufe 7 | wie in der Tabelle |
 | Sollen Fernkämpfer auch Kettenblitz, Impulskanone und Sägeblatt bekommen, oder sind die zu unfair? | ja, alle |
 
