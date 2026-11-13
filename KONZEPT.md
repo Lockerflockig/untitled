@@ -193,7 +193,7 @@ wie viele gleichzeitig da sind und wie schnell sie nachkommen, steht in
 `roomPlan` (`src/sim/game.ts`). **Der Boss skaliert wie alle** über sein Level
 (die Raumnummer): Sein Grundwert für Leben (615) ist so gewählt, dass der erste
 Boss in Raum 5 wieder 900 Trefferpunkte hat. Das gilt auch für seinen Schaden
-(Berührung, Geschosse, Bodenfelder).
+(Berührung, Geschosse, Bodenfelder, Charge, Kegelschuss).
 
 ## 7. Räume und Aufgaben **[fest]**
 
@@ -214,12 +214,50 @@ Raumfolge **[Vorschlag]**: Raum 1 Bananen · 2 Säubern (Fässer) · 3 Bananen
 Danach wechseln die Aufgaben reihum, alles wird dichter. Der Run ist endlos.
 
 **Boss-Räume [Vorschlag]:** Jeder fünfte Raum. Der Boss ist ein Panzer: viel
-Leben, praktisch nicht wegzukicken, rollt langsam auf die Figur zu. Er wechselt
-zwei angekündigte Angriffe ab – ein Fächer hoher Geschosse (blauer Ring:
-ducken) und drei Bodenfelder um die Figur (oranger Ring: springen). Dazu kommen
-wenige Jagddrohnen. Der Boss skaliert wie alle Gegner mit seinem Level
-(Raumnummer): Der erste in Raum 5 hat 900 Trefferpunkte, der in Raum 10 rund
-1450; sein Schaden wächst mit.
+Leben, praktisch nicht wegzukicken. Dazu kommen wenige Jagddrohnen. Der Boss
+skaliert wie alle Gegner mit seinem Level (Raumnummer): Der erste in Raum 5 hat
+900 Trefferpunkte, der in Raum 10 rund 1450; jeder seiner Schäden wächst mit
+(Dauern, Reichweiten und das Tempo des Charge nicht).
+
+**Panzer: Moveset [fest]:** Er fährt nicht von sich aus (unter Vorbehalt – eine
+Konstante, `BOSS_DRIVE`, schaltet langsames Fahren wieder ein); er bewegt sich
+nur beim Charge und beim Rückzugssprung. Er setzt seine Fähigkeiten reihum ein,
+mit 1,5 s Pause dazwischen, nie zweimal dieselbe hintereinander. Mit jedem
+Boss-Level kommt eine dazu, die Stufe erkennt man an der Tönung:
+
+| Boss-Level | Fähigkeiten | Tönung |
+|---|---|---|
+| 5 | Charge | grünlich |
+| 10 | Charge, Call Backup | lila |
+| 15 und höher | Charge, Call Backup, Taktischer Rückzug | rot |
+
+Die beiden alten Angriffe bleiben und reihen sich wie Fähigkeiten ein: ein
+Fächer hoher Geschosse (blauer Ring: ducken) und drei Bodenfelder um die Figur
+(oranger Ring: springen). Der Name einer Fähigkeit erscheint kurz über ihm.
+
+- **Charge („Chaaaarge!!!"):** 1,2 s Aufladen – er steht, eine magentafarbene
+  Bahn in seiner Breite zeigt bis zur Wand, eine Ladeleiste füllt sich. Die Bahn
+  folgt der Figur und rastet 0,3 s vor Schluss ein. Dann rast er mit 900 px/s bis
+  zur Wand. Wen er überfährt, nimmt Schaden (35 in Level 1, Höhe „voll" – nur
+  I-Frames schützen) und wird beiseite geschleudert; Gegner in der Bahn ebenso
+  (als Umgebung). An der Wand ist er 1 s benommen, danach folgt die Pause.
+- **Call Backup („Call Backup!"):** Ein Sendemast erscheint in der Raummitte, mit
+  35 % des maximalen Lebens des Panzers. Er piept (Dauerton `pylon`), steht fest
+  und greift nicht an; man beschädigt ihn mit allem, was auch Geschütze trifft.
+  Nach 5 s ruft er einen Schwarm und verschwindet: Gegner der Typen und Werte
+  dieses Levels erscheinen rundum am Rand (15 in Level 10, je weiteres
+  Boss-Level 5 mehr); sie zählen nicht gegen die Obergrenze des Raums. Wird der
+  Mast vorher zerstört, kommt kein Schwarm. Solange ein Mast steht oder ein
+  Schwarm lebt, kommt kein neues Call Backup.
+- **Taktischer Rückzug („Taktischer Rückzug!!!"):** 0,5 s lang füllt sich ein
+  Kegel vor ihm (zur Figur, ±35°, 350 px). Dann schießt er hinein (25 Schaden in
+  Level 1, nur an der Figur) und springt im selben Moment in gerader Linie weg
+  von der Stelle, an der die Figur beim Auslösen stand – bis 400 px oder zur
+  Wand; im Sprung trifft er niemanden. Ist die Figur näher als 250 px, setzt er
+  den Rückzug bevorzugt ein.
+
+Ist der Panzer zerstört, ist die Aufgabe erfüllt; Mast und Schwarm verschwinden
+mit dem Raum.
 
 ## 8. Punkte und Multiplikatoren **[fest]**
 

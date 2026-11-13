@@ -1,10 +1,10 @@
 // Gegner: Erscheinen, Verhalten je Typ, Kick-Flug, Domino, Wracks.
 
-import { STEP } from './types.ts';
-import type { Alarm, Enemy, EnemyKind, Game } from './types.ts';
+import { ARENA, STEP } from './types.ts';
+import type { Alarm, BossAbility, BossState, Enemy, EnemyKind, Game } from './types.ts';
 import {
-  BARREL_R, ENEMIES, PLAYER_R, TURRET_R, clampTo, damageEnemy, enemyStats, explode, hurtPlayer, scaledDamage,
-  scoreKill, spot,
+  BARREL_R, BLAST_TIME, ENEMIES, PLAYER_R, PYLON_R, TURRET_R, clampTo, damageEnemy, damagePylon, enemyStats, explode,
+  hurtPlayer, scaledDamage, scoreKill, spot,
 } from './core.ts';
 import { FIELD_ACTIVE, FIELD_DAMAGE, FIELD_ENEMY_DAMAGE, FIELD_RADIUS, FIELD_WARN } from './hazards.ts';
 
@@ -62,12 +62,60 @@ const BOMB_DAMAGE = 30; // an der Figur, in Level 1
 const BOMB_ENEMY_DAMAGE = 40; // an Gegnern, in Level 1
 
 // Boss (Panzer)
-const BOSS_COOLDOWN = 1.6;
-export const BOSS_WINDUP = 0.7; // kündigt jeden Angriff an
+// Er fährt nicht von sich aus: Seine einzigen Bewegungen sind Charge und Rückzugssprung.
+export const BOSS_DRIVE = 0; // Anteil seines Tempos (e.speed), mit dem er in den Pausen auf die Figur zurollt; 1 = das frühere langsame Fahren
+export const BOSS_FIRST = 2.5; // s – Pause nach Betreten des Raums bis zur ersten Fähigkeit
+export const BOSS_PAUSE = 1.5; // s zwischen zwei Fähigkeiten
+export const BOSS_WINDUP = 0.7; // s – Fächer und Bodenfelder kündigen sich so lange an
 const BOSS_FAN = 7; // Geschosse pro Fächer
 const BOSS_FAN_STEP = 0.17; // rad zwischen zwei Geschossen
 const BOSS_SHOT_SPEED = 300;
 const BOSS_SHOT_DAMAGE = 15; // in Level 1; Geschosse und Bodenfelder des Bosses merken sich ihren Schaden mit seinem Level
+export const BOSS_CALLOUT = 1.2; // s – so lange steht der Name der Fähigkeit über ihm
+/** Stufenfarben, leicht über das Sprite gelegt: Level 5 grünlich, Level 10 lila, ab Level 15 rot. */
+const BOSS_TINTS = ['#7dff9a', '#b06cff', '#ff4d4d'];
+const BOSS_CALLOUTS: Partial<Record<BossAbility, string>> = {
+  charge: 'Chaaaarge!!!', backup: 'Call Backup!', retreat: 'Taktischer Rückzug!!!',
+};
+
+// Charge
+export const CHARGE_LOAD = 1.2; // s – steht, zeigt die Bahn und füllt die Ladeleiste
+export const CHARGE_LOCK = 0.3; // s – so lange vor Schluss rastet die Bahn ein
+export const CHARGE_SPEED = 900; // px/s – skaliert nicht
+const CHARGE_DAMAGE = 35; // in Level 1, Höhe „voll" – nur I-Frames schützen; gilt auch für überfahrene Gegner
+const CHARGE_FLING = 700; // px/s – so schnell wird die Figur quer zur Bahn beiseite geschleudert
+const CHARGE_ENEMY_FLING = 1200; // px/s, geteilt durch die Masse – überfahrene Gegner fliegen wie gekickt
+export const CHARGE_STUN = 1; // s – benommen nach dem Aufprall an der Wand
+
+// Call Backup
+export const PYLON_SHARE = 0.35; // Anteil am maximalen Leben des Panzers (Bereich 25–50 %)
+export const PYLON_TIME = 5; // s bis zum Schwarm
+const SWARM_BASE = 15; // Gegner im Schwarm in Level 10
+const SWARM_PER_BOSS = 5; // je weiteres Boss-Level (alle 5 Level) mehr
+const SWARM_INSET = 40; // px – Abstand der Ankündigungen von der Wand
+
+// Taktischer Rückzug
+export const RETREAT_SHOW = 0.5; // s – Kegel füllt sich
+export const RETREAT_ARC = (35 * Math.PI) / 180; // rad – halber Öffnungswinkel
+export const RETREAT_RANGE = 350; // px ab Mitte des Panzers
+const RETREAT_DAMAGE = 25; // in Level 1
+export const RETREAT_JUMP = 400; // px – höchstens so weit, sonst bis zur Wand
+export const RETREAT_JUMP_TIME = 0.35; // s – Dauer des Sprungs; währenddessen trifft er niemanden
+const RETREAT_NEAR = 250; // px – ist die Figur näher, setzt er den Rückzug bevorzugt ein
+
+/** Stufe des Panzers: 1 bis Level 9, 2 ab Level 10, 3 ab Level 15. */
+export const bossTier = (level: number) => (level >= 15 ? 3 : level >= 10 ? 2 : 1);
+/** Farbe, mit der der Panzer seiner Stufe nach getönt wird. */
+export const bossTint = (level: number) => BOSS_TINTS[bossTier(level) - 1];
+
+/** Was der Panzer in diesem Level abwechselnd einsetzt – in dieser Reihenfolge. */
+export function bossAbilities(level: number): BossAbility[] {
+  const tier = bossTier(level);
+  return ['charge', 'fan', ...(tier >= 2 ? ['backup' as const] : []), 'fields', ...(tier >= 3 ? ['retreat' as const] : [])];
+}
+
+/** Gegner im Schwarm eines Sendemasts: 15 in Level 10, je weiteres Boss-Level 5 mehr. */
+export const swarmSize = (level: number) => Math.max(SWARM_BASE, SWARM_BASE + SWARM_PER_BOSS * (Math.floor(level / 5) - 2));
 
 function pickKind(g: Game): EnemyKind {
   const total = g.plan.mix.reduce((sum, [, weight]) => sum + weight, 0);
@@ -83,24 +131,36 @@ function pickKind(g: Game): EnemyKind {
 export function makeEnemy(kind: EnemyKind, x: number, y: number, level = 1): Enemy {
   const stats = enemyStats(kind, level);
   return {
-    kind, level, x, y, hp: stats.hp, maxHp: stats.hp, speed: stats.speed, damage: stats.damage, mode: 0,
+    kind, level, x, y, hp: stats.hp, maxHp: stats.hp, speed: stats.speed, damage: stats.damage, 
     pushX: 0, pushY: 0, kicked: false, dead: false, suicide: false,
     lastHit: 'gun', action: 0, hitFlash: 0, dashHit: false, slideHit: false, laserCooldown: 0,
     cooldown: GUNNER_COOLDOWN, windup: 0, melee: null, fuse: null, angle: 0,
+    boss: kind === 'boss' ? newBossState() : null, swarm: false,
+  };
+}
+
+function newBossState(): BossState {
+  return {
+    phase: 'rest', t: BOSS_PAUSE, ability: null, last: null, turn: 0, angle: 0,
+    fromX: 0, fromY: 0, jumpX: 0, jumpY: 0, toX: 0, toY: 0, hit: [], playerHit: false, callout: '', calloutT: 0,
   };
 }
 
 /** Neue Gegner erscheinen mit Vorwarnung. */
 export function stepSpawns(g: Game) {
   g.spawnTimer -= STEP;
-  if (g.spawnTimer <= 0 && g.enemies.length + g.spawns.length < g.plan.maxEnemies) {
+  // Der Schwarm eines Sendemasts zählt nicht gegen die Obergrenze
+  const present = g.enemies.filter((e) => !e.swarm).length + g.spawns.filter((s) => !s.swarm).length;
+  if (g.spawnTimer <= 0 && present < g.plan.maxEnemies) {
     g.spawnTimer = g.plan.spawnEvery;
     g.spawns.push({ ...spot(g, 40, SPAWN_DISTANCE), t: SPAWN_WARN, kind: pickKind(g) });
   }
   g.spawns = g.spawns.filter((s) => {
     s.t -= STEP;
     if (s.t > 0) return true;
-    g.enemies.push(makeEnemy(s.kind, s.x, s.y, g.room));
+    const e = makeEnemy(s.kind, s.x, s.y, g.room);
+    e.swarm = s.swarm ?? false;
+    g.enemies.push(e);
     return false;
   });
 }
@@ -120,6 +180,8 @@ export function alarmsOf(g: Game): Alarm[] {
     const urgency = Math.max(...chasing.map((e) => (e.fuse === null ? 0 : 0.5 + 0.5 * (1 - e.fuse / BOMB_FUSE))));
     alarms.push({ kind: 'beep', urgency: Math.min(1, Math.max(0, urgency)) });
   }
+  // Der Sendemast piept, solange er steht – dringlicher, je näher der Schwarm rückt
+  if (g.pylon) alarms.push({ kind: 'pylon', urgency: Math.min(1, Math.max(0, 1 - g.pylon.t / PYLON_TIME)) });
   return alarms;
 }
 
@@ -202,42 +264,10 @@ export function stepEnemies(g: Game) {
           break;
         }
         case 'boss':
-          // Rollt langsam auf die Figur zu und wechselt zwei angekündigte Angriffe ab
-          moveX = toX * e.speed;
-          moveY = toY * e.speed;
-          if (e.windup > 0) {
-            moveX = moveY = 0;
-            e.windup -= STEP;
-            if (e.windup <= 0) {
-              if (e.mode % 2 === 0) {
-                // Fächer aus hohen Geschossen – ducken oder sliden
-                const base = Math.atan2(dy, dx);
-                for (let i = 0; i < BOSS_FAN; i++) {
-                  const a = base + (i - (BOSS_FAN - 1) / 2) * BOSS_FAN_STEP;
-                  g.shots.push({
-                    x: e.x + Math.cos(a) * def.r, y: e.y + Math.sin(a) * def.r,
-                    vx: Math.cos(a) * BOSS_SHOT_SPEED, vy: Math.sin(a) * BOSS_SHOT_SPEED,
-                    damage: scaledDamage(BOSS_SHOT_DAMAGE, e.level),
-                  });
-                }
-              } else {
-                // Drei Bodenfelder um die Figur – springen oder raus
-                for (let i = 0; i < 3; i++) {
-                  const a = (i / 3) * Math.PI * 2 + e.mode;
-                  g.fields.push({
-                    x: clampTo(g.x + Math.cos(a) * 75, FIELD_RADIUS),
-                    y: clampTo(g.y + Math.sin(a) * 75, FIELD_RADIUS),
-                    r: FIELD_RADIUS, warn: FIELD_WARN, active: FIELD_ACTIVE,
-                    damage: scaledDamage(FIELD_DAMAGE, e.level), enemyDamage: scaledDamage(FIELD_ENEMY_DAMAGE, e.level),
-                  });
-                }
-              }
-              e.mode++;
-              e.cooldown = BOSS_COOLDOWN;
-            }
-          } else {
-            e.cooldown -= STEP;
-            if (e.cooldown <= 0) e.windup = BOSS_WINDUP;
+          // Steht in den Pausen; bewegt sich nur bei Charge und Rückzug (in stepBoss selbst)
+          if (stepBoss(g, e)) {
+            moveX = toX * e.speed * BOSS_DRIVE;
+            moveY = toY * e.speed * BOSS_DRIVE;
           }
           break;
         case 'bomber':
@@ -308,7 +338,7 @@ export function stepEnemies(g: Game) {
           e.pushY = (-toY * KNOCKBACK) / def.mass;
         }
       }
-    } else if (!g.dashing && !e.kicked && e.damage > 0 && !melee && dist < PLAYER_R + def.r) {
+    } else if (!g.dashing && !e.kicked && e.damage > 0 && !melee && !bossMoving(e) && dist < PLAYER_R + def.r) {
       if (hurtPlayer(g, e.damage)) {
         e.pushX = (-toX * KNOCKBACK) / def.mass;
         e.pushY = (-toY * KNOCKBACK) / def.mass;
@@ -325,6 +355,12 @@ export function stepEnemies(g: Game) {
           e.kicked = false;
           e.pushX = e.pushY = 0;
         }
+      }
+      if (e.kicked && g.pylon && Math.hypot(g.pylon.x - e.x, g.pylon.y - e.y) < PYLON_R + def.r) {
+        damagePylon(g, WALL_IMPACT * g.stats.impact * def.mass);
+        damageEnemy(e, WALL_IMPACT * g.stats.impact, 'env');
+        e.kicked = false;
+        e.pushX = e.pushY = 0;
       }
       for (const b of g.barrels) {
         if (b.fuse === null && Math.hypot(b.x - e.x, b.y - e.y) < BARREL_R + def.r) {
@@ -416,4 +452,265 @@ export function stepEnemies(g: Game) {
     }
     return e.kicked;
   });
+  stepPylon(g);
+}
+
+// --- Panzer ------------------------------------------------------------------------
+
+/** Während Charge-Fahrt und Rückzugssprung trifft der Panzer nicht durch Berührung. */
+const bossMoving = (e: Enemy) => e.boss !== null && (e.boss.phase === 'charge-rush' || e.boss.phase === 'retreat-jump');
+
+/** Steht noch ein Mast oder lebt noch ein Schwarm? Dann gibt es kein neues Call Backup. */
+function backupBlocked(g: Game) {
+  return g.pylon !== null || g.enemies.some((e) => e.swarm && !e.dead) || g.spawns.some((s) => s.swarm);
+}
+
+/**
+ * Welche Fähigkeit als Nächstes dran ist: reihum, nie zweimal dieselbe hintereinander,
+ * Call Backup nur ohne Mast und Schwarm, der Rückzug bevorzugt, wenn die Figur nah ist.
+ */
+function nextAbility(g: Game, e: Enemy): BossAbility {
+  const s = e.boss!;
+  const list = bossAbilities(e.level);
+  const allowed = (a: BossAbility) => a !== s.last && (a !== 'backup' || !backupBlocked(g));
+  if (list.includes('retreat') && allowed('retreat') && Math.hypot(g.x - e.x, g.y - e.y) < RETREAT_NEAR) return 'retreat';
+  for (let i = 0; i < list.length; i++) {
+    const a = list[(s.turn + i) % list.length];
+    if (allowed(a)) {
+      s.turn = (s.turn + i + 1) % list.length;
+      return a;
+    }
+  }
+  return list[0];
+}
+
+/** Der Panzer beginnt eine Fähigkeit. Auch für Prüfungen, die eine bestimmte erzwingen wollen. */
+export function startAbility(g: Game, e: Enemy, ability: BossAbility) {
+  const s = e.boss!;
+  s.ability = ability;
+  s.last = ability;
+  s.angle = Math.atan2(g.y - e.y, g.x - e.x);
+  const callout = BOSS_CALLOUTS[ability];
+  if (callout) {
+    s.callout = callout;
+    s.calloutT = BOSS_CALLOUT;
+  }
+  switch (ability) {
+    case 'fan':
+    case 'fields':
+      s.phase = 'windup';
+      s.t = BOSS_WINDUP;
+      break;
+    case 'charge':
+      s.phase = 'charge-load';
+      s.t = CHARGE_LOAD;
+      g.events.push('charge');
+      break;
+    case 'backup': {
+      // Der Mast steht sofort in der Raummitte; danach macht der Panzer seine Pause
+      const hp = Math.round(e.maxHp * PYLON_SHARE);
+      g.pylon = { x: ARENA / 2, y: ARENA / 2, hp, maxHp: hp, t: PYLON_TIME, level: e.level, hitFlash: 0, dashHit: false };
+      s.ability = null;
+      s.phase = 'rest';
+      s.t = BOSS_PAUSE;
+      break;
+    }
+    case 'retreat':
+      s.phase = 'retreat-show';
+      s.t = RETREAT_SHOW;
+      s.fromX = g.x;
+      s.fromY = g.y;
+      break;
+  }
+}
+
+function rest(s: BossState, time = BOSS_PAUSE) {
+  s.phase = 'rest';
+  s.t = time;
+  s.ability = null;
+}
+
+/** Steht die Figur im Kegel des Rückzugs? */
+export function inRetreatCone(e: Enemy, angle: number, x: number, y: number) {
+  const dist = Math.hypot(x - e.x, y - e.y);
+  if (dist >= RETREAT_RANGE + PLAYER_R) return false;
+  const off = Math.atan2(y - e.y, x - e.x) - angle;
+  return Math.abs(Math.atan2(Math.sin(off), Math.cos(off))) <= RETREAT_ARC;
+}
+
+/** Wie weit es von (x, y) in Richtung (dx, dy) geht, bis ein Kreis mit Radius r an die Wand stößt. */
+function toWall(x: number, y: number, dx: number, dy: number, r: number) {
+  const tx = dx > 0 ? (ARENA - r - x) / dx : dx < 0 ? (r - x) / dx : Infinity;
+  const ty = dy > 0 ? (ARENA - r - y) / dy : dy < 0 ? (r - y) / dy : Infinity;
+  return Math.max(0, Math.min(tx, ty));
+}
+
+/** Fächer hoher Geschosse – ducken oder sliden. */
+function bossFan(g: Game, e: Enemy) {
+  const r = ENEMIES.boss.r;
+  const base = Math.atan2(g.y - e.y, g.x - e.x);
+  for (let i = 0; i < BOSS_FAN; i++) {
+    const a = base + (i - (BOSS_FAN - 1) / 2) * BOSS_FAN_STEP;
+    g.shots.push({
+      x: e.x + Math.cos(a) * r, y: e.y + Math.sin(a) * r,
+      vx: Math.cos(a) * BOSS_SHOT_SPEED, vy: Math.sin(a) * BOSS_SHOT_SPEED,
+      damage: scaledDamage(BOSS_SHOT_DAMAGE, e.level),
+    });
+  }
+}
+
+/** Drei Bodenfelder um die Figur – springen oder raus. */
+function bossFields(g: Game, e: Enemy) {
+  for (let i = 0; i < 3; i++) {
+    const a = (i / 3) * Math.PI * 2 + e.boss!.turn;
+    g.fields.push({
+      x: clampTo(g.x + Math.cos(a) * 75, FIELD_RADIUS),
+      y: clampTo(g.y + Math.sin(a) * 75, FIELD_RADIUS),
+      r: FIELD_RADIUS, warn: FIELD_WARN, active: FIELD_ACTIVE,
+      damage: scaledDamage(FIELD_DAMAGE, e.level), enemyDamage: scaledDamage(FIELD_ENEMY_DAMAGE, e.level),
+    });
+  }
+}
+
+/** Charge-Fahrt: geradeaus die Bahn entlang; wer überfahren wird, nimmt Schaden und fliegt beiseite. */
+function chargeRush(g: Game, e: Enemy, s: BossState) {
+  const r = ENEMIES.boss.r;
+  const dx = Math.cos(s.angle);
+  const dy = Math.sin(s.angle);
+  const left = toWall(e.x, e.y, dx, dy, r);
+  const move = Math.min(left, CHARGE_SPEED * STEP);
+  e.x += dx * move;
+  e.y += dy * move;
+  const damage = scaledDamage(CHARGE_DAMAGE, e.level);
+  // quer zur Bahn, auf die Seite, auf der das Opfer steht
+  const side = (x: number, y: number) => ((x - e.x) * -dy + (y - e.y) * dx >= 0 ? 1 : -1);
+  if (!s.playerHit && Math.hypot(g.x - e.x, g.y - e.y) < r + PLAYER_R && hurtPlayer(g, damage)) {
+    s.playerHit = true;
+    const k = side(g.x, g.y);
+    g.vx = -dy * k * CHARGE_FLING;
+    g.vy = dx * k * CHARGE_FLING;
+  }
+  for (const o of g.enemies) {
+    if (o === e || o.dead || s.hit.includes(o)) continue;
+    const def = ENEMIES[o.kind];
+    if (Math.hypot(o.x - e.x, o.y - e.y) >= r + def.r) continue;
+    s.hit.push(o);
+    damageEnemy(o, damage, 'env');
+    const k = side(o.x, o.y);
+    o.pushX = (-dy * k * CHARGE_ENEMY_FLING) / def.mass;
+    o.pushY = (dx * k * CHARGE_ENEMY_FLING) / def.mass;
+    o.kicked = true;
+  }
+  if (left <= CHARGE_SPEED * STEP) {
+    // Aufprall an der Wand: benommen, keine Fähigkeit
+    s.phase = 'stunned';
+    s.t = CHARGE_STUN;
+    g.events.push('explode');
+  }
+}
+
+/**
+ * Ein Schritt des Panzers. Gibt zurück, ob er gerade ruht – nur dann darf er (mit BOSS_DRIVE)
+ * auf die Figur zurollen.
+ */
+function stepBoss(g: Game, e: Enemy): boolean {
+  const s = e.boss!;
+  s.calloutT = Math.max(0, s.calloutT - STEP);
+  s.t -= STEP;
+  switch (s.phase) {
+    case 'rest':
+      if (s.t <= 0) startAbility(g, e, nextAbility(g, e));
+      return s.phase === 'rest';
+    case 'windup':
+      if (s.t <= 0) {
+        if (s.ability === 'fan') bossFan(g, e);
+        else bossFields(g, e);
+        rest(s);
+      }
+      return false;
+    case 'charge-load':
+      // Die Bahn folgt der Figur bis kurz vor Schluss und rastet dann ein
+      if (s.t > CHARGE_LOCK) s.angle = Math.atan2(g.y - e.y, g.x - e.x);
+      if (s.t <= 0) {
+        s.phase = 'charge-rush';
+        s.t = Infinity;
+        s.hit = [];
+        s.playerHit = false;
+      }
+      return false;
+    case 'charge-rush':
+      chargeRush(g, e, s);
+      return false;
+    case 'stunned':
+      if (s.t <= 0) rest(s);
+      return false;
+    case 'retreat-show':
+      if (s.t <= 0) {
+        // Schuss in den Kegel; trifft nur die Figur
+        g.events.push('shoot');
+        if (inRetreatCone(e, s.angle, g.x, g.y)) hurtPlayer(g, scaledDamage(RETREAT_DAMAGE, e.level));
+        // Sprung weg von der gemerkten Stelle, in gerader Linie bis 400 px oder zur Wand
+        let dx = e.x - s.fromX;
+        let dy = e.y - s.fromY;
+        const len = Math.hypot(dx, dy);
+        if (len < 1) {
+          dx = -Math.cos(s.angle);
+          dy = -Math.sin(s.angle);
+        } else {
+          dx /= len;
+          dy /= len;
+        }
+        const reach = Math.min(RETREAT_JUMP, toWall(e.x, e.y, dx, dy, ENEMIES.boss.r));
+        s.jumpX = e.x;
+        s.jumpY = e.y;
+        s.toX = e.x + dx * reach;
+        s.toY = e.y + dy * reach;
+        s.phase = 'retreat-jump';
+        s.t = RETREAT_JUMP_TIME;
+      }
+      return false;
+    case 'retreat-jump': {
+      const p = Math.min(1, 1 - s.t / RETREAT_JUMP_TIME);
+      e.x = s.jumpX + (s.toX - s.jumpX) * p;
+      e.y = s.jumpY + (s.toY - s.jumpY) * p;
+      if (s.t <= 0) rest(s);
+      return false;
+    }
+  }
+}
+
+/** Schwarm: Ankündigungen rundum am Rand des Raums, mit Typen und Werten des Levels. */
+function callSwarm(g: Game, level: number) {
+  const n = swarmSize(level);
+  const offset = Math.random() * Math.PI * 2;
+  for (let i = 0; i < n; i++) {
+    const a = offset + (i / n) * Math.PI * 2;
+    const c = Math.cos(a);
+    const sn = Math.sin(a);
+    const reach = (ARENA / 2 - SWARM_INSET) / Math.max(Math.abs(c), Math.abs(sn));
+    g.spawns.push({ x: ARENA / 2 + c * reach, y: ARENA / 2 + sn * reach, t: SPAWN_WARN, kind: pickKind(g), swarm: true });
+  }
+}
+
+/** Sendemast: nimmt Dash-Schaden, zählt herunter und ruft den Schwarm – oder fällt vorher. */
+function stepPylon(g: Game) {
+  const p = g.pylon;
+  if (!p) return;
+  p.hitFlash = Math.max(0, p.hitFlash - STEP);
+  if (g.dashing && !p.dashHit && Math.hypot(g.x - p.x, g.y - p.y) < PLAYER_R + PYLON_R + 6) {
+    p.dashHit = true;
+    damagePylon(g, g.stats.dashDamage);
+  }
+  if (p.hp <= 0) {
+    // zerstört: kein Schwarm
+    g.blasts.push({ x: p.x, y: p.y, r: 50, t: BLAST_TIME, kind: 'turret' });
+    g.events.push('explode');
+    g.pylon = null;
+    return;
+  }
+  p.t -= STEP;
+  if (p.t <= 0) {
+    callSwarm(g, p.level);
+    g.pylon = null; // hat seine Aufgabe erfüllt
+  }
 }

@@ -3,7 +3,7 @@
 import { STEP, ARENA } from './types.ts';
 import type { Enemy, Game, Input } from './types.ts';
 import {
-  BARREL_R, ENEMIES, JUMP_TIME, MINE_R, PLAYER_R, TURRET_R, clampTo, damageEnemy, explode, rand,
+  BARREL_R, ENEMIES, JUMP_TIME, MINE_R, PLAYER_R, PYLON_R, TURRET_R, clampTo, damageEnemy, damagePylon, explode, rand,
 } from './core.ts';
 import { WEAPONS } from './meta.ts';
 
@@ -111,6 +111,7 @@ export function stepPlayer(g: Game, input: Input) {
     if (s.quickdraw >= 2) g.kickCooldown = 0;
     for (const e of g.enemies) e.dashHit = false;
     for (const t of g.turrets) t.dashHit = false;
+    if (g.pylon) g.pylon.dashHit = false;
   }
   g.dashing = g.dashTime > 0;
   if (g.dashing) {
@@ -279,6 +280,7 @@ function lengthToWall(g: Game) {
 function stepPlayerBeam(g: Game) {
   const pb = g.playerBeam;
   if (!pb) return;
+  const pylon = g.pylon;
   pb.length = lengthToWall(g);
   // Die erste Schilddrohne, die in den Strahl schaut, begrenzt ihn
   for (const e of g.enemies) {
@@ -316,6 +318,10 @@ function stepPlayerBeam(g: Game) {
     pb.hit.push(t);
     t.hp -= pb.damage;
     t.hitFlash = 0.12;
+  }
+  if (pylon && !pb.hit.includes(pylon) && inBeam(pylon.x, pylon.y, PYLON_R)) {
+    pb.hit.push(pylon);
+    damagePylon(g, pb.damage);
   }
   for (const m of g.mines) {
     if (m.fuse === null && inBeam(m.x, m.y, MINE_R)) {
@@ -418,6 +424,12 @@ export function stepBullets(g: Game) {
         t.hitFlash = 0.12;
         return false;
       }
+    }
+    // Der Sendemast fängt Geschosse ab wie ein Geschütz
+    if (g.pylon && Math.hypot(g.pylon.x - b.x, g.pylon.y - b.y) < PYLON_R + BULLET_R) {
+      if (b.blast > 0) return detonate();
+      damagePylon(g, b.damage);
+      return false;
     }
     for (const m of g.mines) {
       if (m.fuse === null && Math.hypot(m.x - b.x, m.y - b.y) < MINE_R + BULLET_R) {

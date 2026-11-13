@@ -24,10 +24,12 @@ Mögliche Namen:
    die        Figur zerstört
    beep       Warnton, solange eine Sprengdrohne auf die Figur zuläuft
               (Dauerton, siehe unten)
+   pylon      Piepen des Sendemasts, den der Boss ruft (Dauerton, siehe
+              unten); wird schneller und höher, je näher der Schwarm rückt
 
 Dauertöne
 
-Der Warnton läuft als Schleife, solange seine Bedingung gilt, und endet sofort,
+Die Dauertöne (beep, pylon) verhalten sich gleich. Der Warnton läuft als Schleife, solange seine Bedingung gilt, und endet sofort,
 wenn sie nicht mehr gilt (auch bei Pause, Beute-Auswahl und Spielende). Er
 piept schneller und höher, sobald die Lunte einer Sprengdrohne brennt. Die
 Datei ist ein einzelner Piepton; das Spiel wiederholt sie im Takt.
@@ -41,3 +43,6 @@ eintragen:
 "schleife": false wirkt auch ohne "datei" – dann für den Platzhalter:
 
    { "beep": { "schleife": false } }
+
+Für den Sendemast genauso, z. B. { "pylon": { "datei": "mast.wav", "schleife": false } } –
+dann ertönt er einmal, wenn der Mast erscheint.

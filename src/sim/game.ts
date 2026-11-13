@@ -4,7 +4,7 @@ import { ARENA, STEP } from './types.ts';
 import type { Game, Input, ObjectiveType, RoomPlan, Stats, EnemyKind } from './types.ts';
 import { BANANA_R, BLAST_TIME, ENEMIES, PLAYER_R, award, explode, rand, spot } from './core.ts';
 import { stepBullets, stepPlayer } from './player.ts';
-import { makeEnemy, stepEnemies, stepSpawns } from './enemies.ts';
+import { BOSS_FIRST, makeEnemy, stepEnemies, stepSpawns } from './enemies.ts';
 import { TURRET_HP, stepHazards } from './hazards.ts';
 import { rollOffers, stepPickups } from './loot.ts';
 
@@ -101,6 +101,7 @@ function clearRoom(g: Game) {
   g.mines = [];
   g.barrels = [];
   g.turrets = [];
+  g.pylon = null; // Mast und Schwarm verschwinden mit dem Raum
   g.shots = [];
   g.bananas = [];
 }
@@ -133,7 +134,7 @@ function enterRoom(g: Game, n: number) {
   if (g.plan.objective === 'boss') {
     // Der Boss skaliert wie alle über sein Level (die Raumnummer): Level 5 hat 900 Trefferpunkte
     const boss = makeEnemy('boss', ARENA - 160, ARENA / 2, n);
-    boss.cooldown = 2.5;
+    boss.boss!.t = BOSS_FIRST;
     g.enemies.push(boss);
   }
 }
@@ -155,7 +156,7 @@ export function newGame(stats: Stats, startRoom = 1): Game {
     weapon: 0, weaponCooldown: stats.weapons.map(() => 0),
     bullets: [], playerBeam: null, enemies: [], spawns: [], spawnTimer: 0,
     lasers: [], laserTimer: 0, beams: [], beamTimer: 0, fields: [], fieldTimer: 0,
-    mines: [], barrels: [], turrets: [], shots: [], blasts: [], marks: [], bananas: [],
+    mines: [], barrels: [], turrets: [], pylon: null, shots: [], blasts: [], marks: [], bananas: [],
     score: 0, streak: 0, streakTimer: 0, actionId: 0, comboAction: 0, comboKills: 0,
     popups: [], kills: 0, roomKills: 0, time: 0, over: false, events: [],
   };
