@@ -10,13 +10,13 @@ import {
 import { KICK_ARC, KICK_REACH } from './sim/player.ts';
 import { BULLET_R, SHOT_R } from './sim/projectiles.ts';
 import {
-  BOMB_FUSE, BOMB_RADIUS, BOSS_CALLOUT, BOSS_WINDUP, CHARGE_LOAD, GUNNER_WINDUP, MELEE, PYLON_TIME, RETREAT_ARC,
-  RETREAT_JUMP_TIME, RETREAT_RANGE, RETREAT_SHOW, SPAWN_WARN, bossTint,
+  BOMB_FUSE, BOMB_RADIUS, BOSS_CALLOUT, BOSS_WINDUP, CHARGE_LOAD, MELEE, PYLON_TIME, RETREAT_ARC,
+  RETREAT_JUMP_TIME, RETREAT_RANGE, RETREAT_SHOW, SPAWN_WARN, bossTint, rangedOf,
 } from './sim/enemies.ts';
 import { BEAM_LOCK, FIELD_WARN, LASER_WARN, TURRET_HP } from './sim/hazards.ts';
 import { ENTRY_X, EXIT_HALF, EXIT_Y, RUN_OUT_TIME, SLIDE_TIME } from './sim/game.ts';
-import { drawEnemySprite, drawExplosionSprite, enemySpriteReady } from './sprites.ts';
-import { drawPlayerSprite, muzzlePoint, spritesReady } from './playerSprite.ts';
+import { RANGED_COLOR, drawEnemySprite, drawExplosionSprite, enemySpriteReady } from './sprites.ts';
+import { drawGunIcon, drawPlayerSprite, muzzlePoint, spritesReady } from './playerSprite.ts';
 import { PICKUP_R } from './sim/loot.ts';
 
 // Der Raum ist von Wänden umgeben, die wie im Original nach außen "hochklappen":
@@ -342,7 +342,7 @@ function drawHazards(ctx: Ctx, g: Game, time: number) {
     ctx.beginPath();
     ctx.moveTo(b.ox, b.oy);
     ctx.lineTo(b.ox + b.dx * 1600, b.oy + b.dy * 1600);
-    ctx.strokeStyle = HEIGHT_COLOR.high;
+    ctx.strokeStyle = HEIGHT_COLOR[b.height ?? 'high'];
     if (b.phase === 'track') {
       ctx.globalAlpha = 0.35;
       ctx.lineWidth = 1.5;
@@ -351,7 +351,7 @@ function drawHazards(ctx: Ctx, g: Game, time: number) {
       ctx.globalAlpha = 0.5 + 0.5 * (1 - b.t / BEAM_LOCK);
       ctx.lineWidth = 3;
     } else {
-      ctx.shadowColor = HEIGHT_COLOR.high;
+      ctx.shadowColor = HEIGHT_COLOR[b.height ?? 'high'];
       ctx.shadowBlur = 24;
       ctx.strokeStyle = '#e6f2ff';
       ctx.lineWidth = 12;
@@ -477,6 +477,12 @@ function drawBossOverlay(ctx: Ctx, e: Enemy) {
   }
 }
 
+/** Fernkämpfer tragen die Waffe ihrer Klasse (Waffenbild, falls vorhanden), auf die Figur gerichtet. */
+function drawRangedWeapon(ctx: Ctx, g: Game, e: Enemy) {
+  if (e.kind !== 'gunner' || e.dead || e.kicked || !e.weapon) return;
+  drawGunIcon(ctx, e.weapon, e.x, e.y - 8, Math.atan2(g.y - e.y, g.x - e.x));
+}
+
 function drawEnemy(ctx: Ctx, g: Game, e: Enemy, time: number) {
   drawBossGround(ctx, e); // liegt am Boden, unter dem Panzer
   drawEnemyBody(ctx, g, e, time);
@@ -489,6 +495,7 @@ function drawEnemyBody(ctx: Ctx, g: Game, e: Enemy, time: number) {
   drawMeleeArc(ctx, e); // liegt am Boden, unter der Figur der Drohne
   if (enemySpriteReady(e.kind)) {
     drawEnemySprite(ctx, g, e, time);
+    drawRangedWeapon(ctx, g, e);
     return;
   }
   // Ersatz, solange die Bilder noch laden
@@ -536,8 +543,8 @@ function drawEnemyBody(ctx: Ctx, g: Game, e: Enemy, time: number) {
     ctx.lineWidth = 5;
     ctx.stroke();
     if (e.windup > 0) {
-      circle(ctx, e.x, e.y, def.r + 10 * (e.windup / GUNNER_WINDUP));
-      ctx.strokeStyle = HEIGHT_COLOR.high;
+      circle(ctx, e.x, e.y, def.r + 10 * (e.windup / rangedOf(e).windup));
+      ctx.strokeStyle = RANGED_COLOR[e.weapon ?? 'pistol'];
       ctx.lineWidth = 2;
       ctx.stroke();
     }

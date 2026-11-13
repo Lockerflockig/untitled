@@ -6,8 +6,9 @@ import type { BossAbility, Enemy, EnemyKind, Field, Game, Input, Laser, Stats } 
 import { newGame, roomPlan, step, testMode } from '../src/sim/game.ts';
 import {
   BOMB_SPEED, CHARGE_LOAD, CHARGE_LOCK, PYLON_TIME, RETREAT_SHOW, SHIELD_BLAST_RADIUS, SHIELD_TURN, SPAWN_WARN, alarmsOf,
-  bossAbilities, bossTint, makeEnemy, startAbility,
+  RANGED, RANGED_ORDER, bossAbilities, bossTint, makeEnemy, rangedUnlockLevel, startAbility, unlockedRanged,
 } from '../src/sim/enemies.ts';
+import { WEAPONS } from '../src/sim/meta.ts';
 import { ALARM_INTERVAL, AlarmLoops } from '../src/alarmLoop.ts';
 import { spawnLaser } from '../src/sim/hazards.ts';
 import { ENEMIES, enemyStats } from '../src/sim/core.ts';
@@ -1389,13 +1390,145 @@ console.log('--- Gemeinsames Projektil-System (P1) ---');
   }
 }
 
+console.log('--- Fernkämpfer-Klassen ---');
+{
+  const classes = (n: number) => roomPlan(n).gunners.map(([w]) => w).join();
+  check('Klassen nach Waffe: Pistole ab Level 1, Schwerlaser 5, Schrot 10 – alle fünf Level eine mehr, bis zehn',
+    RANGED_ORDER.map(rangedUnlockLevel).join() === '1,5,10,15,20,25,30,35,40,45'
+    && classes(1) === 'pistol' && classes(4) === 'pistol' && classes(5) === 'pistol,rail' && classes(9) === 'pistol,rail'
+    && classes(10) === 'pistol,rail,shotgun' && classes(45) === RANGED_ORDER.join() && classes(60) === RANGED_ORDER.join(),
+    [1, 5, 10, 45].map(classes));
+  const spawned = (n: number) => {
+    const g = quiet(baseStats(), n);
+    g.plan = { ...g.plan, objective: 'clear', goal: 1e9, mix: [['gunner', 1]], maxEnemies: 99, spawnEvery: 0.1 };
+    g.spawnTimer = 0;
+    run(g, 40 * 0.1 + 1.2);
+    return g.enemies.filter((e) => e.kind === 'gunner');
+  };
+  const [l1, l5, l10] = [spawned(1), spawned(5), spawned(10)];
+  const kinds = (list: Enemy[]) => [...new Set(list.map((e) => e.weapon))].sort().join();
+  check('Spawn: in Level 1 nur Pistolen-Fernkämpfer, in Level 5 auch Schwerlaser, in Level 10 auch Schrot',
+    l1.length > 10 && kinds(l1) === 'pistol' && kinds(l5) === 'pistol,rail' && kinds(l10) === 'pistol,rail,shotgun',
+    { l1: kinds(l1), l5: kinds(l5), l10: kinds(l10) });
+  check('Fernkämpfer behalten ihre Waffe, Berührungsschaden hat keiner',
+    RANGED_ORDER.every((w) => {
+      const g = quiet();
+      const e = makeEnemy('gunner', g.x + 5, g.y, 1, w);
+      e.cooldown = 1e9;
+      g.enemies.push(e);
+      run(g, 0.5);
+      return g.hp === 100 && e.weapon === w;
+    }));
+}
+{
+  // Fernkämpfer rechts von der Figur; gemessen wird, was er abfeuert
+  const fire = (weapon: Parameters<typeof makeEnemy>[4], level = 1, dx = 300) => {
+    const g = quiet();
+    const e = makeEnemy('gunner', g.x + dx, g.y, level, weapon);
+    e.angle = Math.PI;
+    g.enemies.push(e);
+    let t = 0;
+    let aimed = -1;
+    for (let i = 0; i < 1200 && g.bullets.length === 0 && g.beams.length === 0; i++) {
+      step(g, idle(g));
+      t += STEP;
+      if (aimed < 0 && e.windup > 0) aimed = t;
+    }
+    return { g, e, windup: t - aimed };
+  };
+  const pistol = fire('pistol');
+  const own = quiet(baseStats({ weapons: ['pistol'] }));
+  step(own, idle(own, { fire: true }));
+  const [theirs, mine] = [pistol.g.bullets[0], own.bullets[0]];
+  const speed = (b: { vx: number; vy: number }) => Math.hypot(b.vx, b.vy);
+  check('Geschoss eines Fernkämpfers ist langsamer als das der Figur mit derselben Waffe (45 %)',
+    theirs.side === 'enemy' && Math.abs(speed(theirs) / speed(mine) - ENEMY_SPEED_FACTOR) < 0.01, { theirs: speed(theirs), mine: speed(mine) });
+  check('Vor jedem Schuss vergeht die Ankündigung (Zielen 0,4 s)', pistol.windup >= 0.39 && pistol.windup < 0.45
+    && fire('shotgun').windup >= 0.39 && fire('grenade').windup >= 0.49, { pistol: pistol.windup });
+  check('Schaden in Level 6 höher als in Level 1: Pistole 16 gegen 12, Schwerlaser-Strahl 33 gegen 25',
+    pistol.g.bullets[0].damage === 12 && fire('pistol', 6).g.bullets[0].damage === 16
+    && fire('rail').g.beams[0].damage === 25 && fire('rail', 6).g.beams[0].damage === 33,
+    { p1: pistol.g.bullets[0].damage, p6: fire('pistol', 6).g.bullets[0].damage });
+  const rail = fire('rail');
+  check('Schwerlaser-Fernkämpfer: Der Strahl kündigt sich mindestens 0,8 s an und trifft dann auch den Geduckten',
+    rail.g.beams.length === 1 && rail.g.beams[0].t >= 0.8 && rail.g.beams[0].phase === 'lock', { beams: rail.g.beams });
+  run(rail.g, 0.7, () => ({ duck: true }));
+  const early = rail.g.hp;
+  run(rail.g, 0.6, () => ({ duck: true }));
+  check('… erst danach Schaden (voll: Ducken hilft nicht)', early === 100 && rail.g.hp === 75, { early, hp: rail.g.hp });
+  const shotgun = fire('shotgun');
+  check('Schrot-Fernkämpfer feuert einen Fächer aus sechs Geschossen', shotgun.g.bullets.length === 6, { n: shotgun.g.bullets.length });
+}
+{
+  const distance = (weapon: Parameters<typeof makeEnemy>[4]) => {
+    const g = quiet();
+    const e = makeEnemy('gunner', g.x + 300, g.y, 1, weapon);
+    e.cooldown = 1e9; // schießt nicht, es geht nur um den Abstand
+    g.enemies.push(e);
+    run(g, 5);
+    return Math.hypot(e.x - g.x, e.y - g.y);
+  };
+  const [pistol, shotgun, flamer] = [distance('pistol'), distance('shotgun'), distance('flamer')];
+  check('Schrot und Flammenwerfer halten weniger Abstand (140–200 px) als die Pistole (260–340 px)',
+    pistol >= 255 && shotgun <= 215 && flamer <= 215 && shotgun >= 130, { pistol, shotgun, flamer });
+}
+{
+  const grenade = (landing: number, level = 1) => {
+    const g = quiet();
+    const e = makeEnemy('gunner', g.x + 300, g.y, level, 'grenade');
+    e.angle = Math.PI;
+    g.enemies.push(e);
+    for (let i = 0; i < 1200 && g.bullets.length === 0; i++) step(g, idle(g));
+    const launched = g.bullets[0];
+    g.x = g.prevX = g.x - landing; // die Figur weicht seitwärts aus der Landestelle aus
+    for (let i = 0; i < 600 && g.blasts.length === 0; i++) step(g, idle(g));
+    return { g, launched, blast: g.blasts[0] };
+  };
+  const hit = grenade(0);
+  check('Gegnerische Granate: halber Radius (45 px), trifft die Figur darin mit dem Schaden der Klasse',
+    hit.launched.blast === WEAPONS.grenade.blast * 0.5 && hit.blast?.r === 45 && hit.g.hp === 100 - RANGED.grenade.damage,
+    { blast: hit.blast?.r, hp: hit.g.hp });
+  const miss = grenade(80);
+  check('… außerhalb des Radius passiert der Figur nichts', miss.blast?.r === 45 && miss.g.hp === 100, { hp: miss.g.hp });
+}
+
+{
+  // Die Explosion einer gegnerischen Granate trifft auch andere Gegner im Radius
+  const g = quiet();
+  const shooter = makeEnemy('gunner', g.x + 330, g.y, 1, 'grenade');
+  shooter.cooldown = 1e9;
+  const neighbor = makeEnemy('heavy', g.x + 280, g.y + 20);
+  neighbor.cooldown = 1e9;
+  g.enemies.push(shooter, neighbor);
+  enemyFire(g, shooter, 'grenade', Math.PI, 22, 40);
+  run(g, 0.5);
+  check('Gegnerische Granate trifft auch andere Gegner im Radius (Umgebung)', g.blasts.some((b) => b.r === 45) && neighbor.hp === neighbor.maxHp - 22,
+    { hp: neighbor.hp });
+}
+
+console.log('--- Testmodus: Fernkämpfer-Räume ---');
+{
+  testMode.on = true;
+  const plans = [9, 10, 11, 18, 19].map(roomPlan);
+  testMode.on = false;
+  const classes = (i: number) => plans[i].gunners.map(([w]) => w).join();
+  const weights = (i: number) => plans[i].gunners.map(([, w]) => w).join();
+  check('Testmodus: Raum 9 nur Pistolen-Fernkämpfer, Raum 10 dazu Schwerlaser, Raum 11 Schrot – die neue Klasse am häufigsten',
+    classes(0) === 'pistol' && classes(1) === 'pistol,rail' && classes(2) === 'pistol,rail,shotgun'
+    && weights(0) === '6' && weights(1) === '2,6' && weights(2) === '2,2,6'
+    && plans.slice(0, 4).every((p) => p.objective === 'clear' && p.mix.length === 1 && p.mix[0][0] === 'gunner'),
+    plans.slice(0, 3).map((p) => p.gunners));
+  check('Testmodus: Raum 18 hat alle zehn Klassen, danach gilt die normale Raumfolge',
+    classes(3) === RANGED_ORDER.join() && plans[4].mix.length > 1 && unlockedRanged(45).length === 10);
+}
+
 console.log('--- Testmodus ---');
 {
   const normal = [1, 2, 3, 4, 5].map((n) => roomPlan(n).objective).join();
   testMode.on = true;
   const plans = [1, 2, 3, 4, 5, 6, 7, 8].map(roomPlan);
   const bosses = [1, 2, 3].map((n) => newGame(baseStats(), n).enemies.find((e) => e.kind === 'boss')!);
-  const after = roomPlan(9).objective;
+  const after = roomPlan(19).objective;
   testMode.on = false;
   check('Testmodus: Boss in Raum 1–3 in seinen drei Stufen (Level 5, 10, 15)',
     plans.slice(0, 3).every((p) => p.objective === 'boss') && bosses.map((b) => b.level).join() === '5,10,15'
@@ -1404,8 +1537,8 @@ console.log('--- Testmodus ---');
     plans.slice(3).map((p) => p.mix.map(([k]) => k).join('+')).join() === 'hunter,hunter+gunner,hunter+gunner+bomber,hunter+gunner+bomber+shield,hunter+gunner+bomber+shield+heavy'
     && plans.slice(3).every((p) => p.objective === 'clear' && p.mix[p.mix.length - 1][1] === 6),
     plans.slice(3).map((p) => p.mix));
-  check('Testmodus: nach Raum 8 und ohne Testmodus gilt die normale Raumfolge',
-    after === roomPlan(9).objective && normal === 'collect,clear,collect,survive,boss' && newGame(baseStats(), 1).enemies.length === 0);
+  check('Testmodus: nach den Fernkämpfer-Räumen (ab Raum 19) und ohne Testmodus gilt die normale Raumfolge',
+    after === roomPlan(19).objective && normal === 'collect,clear,collect,survive,boss' && newGame(baseStats(), 1).enemies.length === 0);
 }
 
 console.log(failed === 0 ? '\nAlle Prüfungen bestanden.' : `\n${failed} Prüfung(en) fehlgeschlagen.`);

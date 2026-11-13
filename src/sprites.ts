@@ -2,9 +2,9 @@
 // Die Spielfigur steht in playerSprite.ts. Alle Figuren sind in Seitenansicht
 // gezeichnet und werden je nach Blickrichtung gespiegelt.
 
-import type { BlastKind, Enemy, EnemyKind, Game } from './sim/types.ts';
+import type { BlastKind, Enemy, EnemyKind, Game, WeaponId } from './sim/types.ts';
 import { ENEMIES } from './sim/core.ts';
-import { BOMB_FUSE, BOMB_RADIUS, GUNNER_WINDUP, MELEE, bossTint } from './sim/enemies.ts';
+import { BOMB_FUSE, BOMB_RADIUS, MELEE, bossTint, rangedOf } from './sim/enemies.ts';
 
 type Ctx = CanvasRenderingContext2D;
 interface Clip { file: string; frames: number; fps: number }
@@ -24,6 +24,12 @@ export function shadow(ctx: Ctx, x: number, y: number, width: number, shrink = 0
 }
 
 // --- Gegner -----------------------------------------------------------------
+
+/** Farbe des Zielrings eines Fernkämpfers: verrät seine Klasse (Waffe). */
+export const RANGED_COLOR: Record<WeaponId, string> = {
+  pistol: '#4da3ff', rail: '#ff4fd8', shotgun: '#ff9f43', smg: '#ffe066', grenade: '#7bd88f',
+  flamer: '#ff5a36', sniper: '#e6f2ff', chain: '#9be7ff', pulse: '#c9b6ff', saw: '#c9d1e0',
+};
 
 interface EnemySprite {
   size: number; // Kantenlänge eines Einzelbilds
@@ -144,7 +150,7 @@ export function drawEnemySprite(ctx: Ctx, g: Game, e: Enemy, time: number) {
     clip = e.boss.phase === 'charge-rush' || e.boss.phase === 'retreat-jump' ? s.move : s.idle;
   } else if (s.attack && e.windup > 0) {
     clip = s.attack;
-    frame = Math.min(s.attack.frames - 1, Math.floor((1 - e.windup / GUNNER_WINDUP) * s.attack.frames));
+    frame = Math.min(s.attack.frames - 1, Math.floor((1 - e.windup / rangedOf(e).windup) * s.attack.frames));
   } else if (s.attack && e.melee && MELEE[e.kind]) {
     // Nahkampf: Die Bilder laufen über das Ausholen; im Moment des Schlags bleibt kurz das letzte stehen, in der Erholung die Ruhe
     const def = MELEE[e.kind]!;
@@ -198,8 +204,8 @@ export function drawEnemySprite(ctx: Ctx, g: Game, e: Enemy, time: number) {
   if (e.kind === 'gunner' && e.windup > 0) {
     // zielt: Ring zieht sich zusammen, dann fällt der Schuss
     ctx.beginPath();
-    ctx.arc(e.x, e.y, def.r + 14 * (e.windup / GUNNER_WINDUP), 0, Math.PI * 2);
-    ctx.strokeStyle = '#4da3ff';
+    ctx.arc(e.x, e.y, def.r + 14 * (e.windup / rangedOf(e).windup), 0, Math.PI * 2);
+    ctx.strokeStyle = RANGED_COLOR[e.weapon ?? 'pistol'];
     ctx.lineWidth = 2;
     ctx.stroke();
   }

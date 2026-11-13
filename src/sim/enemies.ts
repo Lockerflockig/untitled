@@ -1,12 +1,12 @@
 // Gegner: Erscheinen, Verhalten je Typ, Kick-Flug, Domino, Wracks.
 
 import { ARENA, STEP } from './types.ts';
-import type { Alarm, BossAbility, BossState, Enemy, EnemyKind, Game } from './types.ts';
+import type { Alarm, BossAbility, BossState, Enemy, EnemyKind, Game, WeaponId } from './types.ts';
 import {
   BARREL_R, BLAST_TIME, ENEMIES, PLAYER_R, PYLON_R, TURRET_R, clampTo, damageEnemy, damagePylon, enemyStats, explode,
   hurtPlayer, scaledDamage, scoreKill, spot,
 } from './core.ts';
-import { enemyShot } from './projectiles.ts';
+import { enemyFire, enemyShot } from './projectiles.ts';
 import { FIELD_ACTIVE, FIELD_DAMAGE, FIELD_ENEMY_DAMAGE, FIELD_RADIUS, FIELD_WARN } from './hazards.ts';
 
 export const SPAWN_WARN = 0.9; // so lange kündigt sich ein Gegner an
@@ -42,12 +42,41 @@ export const MELEE: Partial<Record<EnemyKind, MeleeDef>> = {
 };
 const MELEE_INTERRUPT = 60; // px/s – ein Rückstoß darüber (Kick, Treffer, Dash, Explosion) bricht das Ausholen ab
 
-// Geschützdrohne
-const GUNNER_RANGE: [number, number] = [260, 340]; // hält diesen Abstand
-const GUNNER_COOLDOWN = 1.1;
-export const GUNNER_WINDUP = 0.4; // zielt sichtbar, bevor sie feuert
-const GUNNER_SHOT_SPEED = 380;
-const GUNNER_SHOT_DAMAGE = 12;
+// Geschützdrohne = Fernkämpfer. Jede Klasse führt genau eine Waffe aus WEAPONS und behält sie.
+// Geschosse sind langsamer und Flächenschaden kleiner als bei der Figur (ENEMY_SPEED_FACTOR,
+// ENEMY_BLAST_FACTOR in projectiles.ts); Feuerrate und Schaden stehen hier je Waffe. Die Werte
+// sind Startwerte fürs Balancing. Schaden wächst mit dem Level, alles Übrige nicht.
+export interface RangedDef {
+  windup: number; // s – sie bleibt stehen und zielt sichtbar, bevor sie feuert
+  cooldown: number; // s – Pause nach dem Schuss (oder der Salve), bevor sie neu zielt
+  damage: number; // je Projektil, in Level 1
+  range: [number, number]; // hält diesen Abstand zur Figur (px)
+  burst?: { count: number; gap: number }; // Salve: so viele Schüsse im Abstand von gap Sekunden
+  hold?: number; // s – Strahlenwaffe: so lange steht sie nach dem Schuss still (Strahl kündigt sich an und brennt)
+}
+const FAR: [number, number] = [260, 340];
+const NEAR: [number, number] = [140, 200]; // Kurzstrecken-Waffen bleiben näher
+export const RANGED: Record<WeaponId, RangedDef> = {
+  pistol: { windup: 0.4, cooldown: 1.1, damage: 12, range: FAR },
+  rail: { windup: 0.2, cooldown: 2.8, damage: 25, range: FAR, hold: 1.1 },
+  shotgun: { windup: 0.4, cooldown: 2, damage: 7, range: NEAR },
+  smg: { windup: 0.4, cooldown: 1.2, damage: 5, range: FAR, burst: { count: 4, gap: 0.12 } },
+  grenade: { windup: 0.5, cooldown: 2.6, damage: 22, range: FAR },
+  flamer: { windup: 0.4, cooldown: 1.6, damage: 4, range: NEAR, burst: { count: 6, gap: 0.09 } },
+  sniper: { windup: 0.4, cooldown: 2.4, damage: 28, range: FAR },
+  chain: { windup: 0.4, cooldown: 1.6, damage: 14, range: FAR },
+  pulse: { windup: 0.4, cooldown: 2, damage: 8, range: FAR },
+  saw: { windup: 0.4, cooldown: 2.2, damage: 12, range: FAR },
+};
+/** In dieser Reihenfolge kommen die Klassen ins Spiel: alle fünf Level eine neue (Pistole ab Level 1, Schwerlaser ab 5, Schrot ab 10 …). */
+export const RANGED_ORDER: WeaponId[] = ['pistol', 'rail', 'shotgun', 'smg', 'grenade', 'flamer', 'sniper', 'chain', 'pulse', 'saw'];
+const RANGED_EVERY = 5; // Level zwischen zwei neuen Klassen
+export const rangedUnlockLevel = (weapon: WeaponId) => Math.max(1, RANGED_ORDER.indexOf(weapon) * RANGED_EVERY);
+/** Die Klassen, die in einem Level erscheinen können, mit gleichem Gewicht. */
+export const unlockedRanged = (level: number): [WeaponId, number][] =>
+  RANGED_ORDER.filter((w) => level >= rangedUnlockLevel(w)).map((w): [WeaponId, number] => [w, 1]);
+export const rangedOf = (e: Enemy): RangedDef => RANGED[e.weapon ?? 'pistol'];
+const GUNNER_FIRST_SHOT = 1.1; // s bis zum ersten Zielen nach dem Erscheinen
 
 // Schilddrohne
 export const SHIELD_TURN = 2.2; // rad/s – langsam genug, um sie zu umlaufen; skaliert nicht mit dem Level
@@ -128,14 +157,33 @@ function pickKind(g: Game): EnemyKind {
   return g.plan.mix[0][0];
 }
 
+/** Klasse eines neuen Fernkämpfers: unter den Klassen des Raums ausgewürfelt. */
+function pickWeapon(g: Game): WeaponId {
+  const classes = g.plan.gunners;
+  const total = classes.reduce((sum, [, weight]) => sum + weight, 0);
+  let roll = Math.random() * total;
+  for (const [weapon, weight] of classes) {
+    roll -= weight;
+    if (roll <= 0) return weapon;
+  }
+  return classes[0][0];
+}
+
+/** Ein Schuss eines Fernkämpfers auf die Figur; der Schaden hängt von seinem Level ab. */
+function fireRanged(g: Game, e: Enemy, rd: RangedDef) {
+  const dx = g.x - e.x;
+  const dy = g.y - e.y;
+  enemyFire(g, e, e.weapon ?? 'pistol', Math.atan2(dy, dx), scaledDamage(rd.damage, e.level), Math.hypot(dx, dy) - ENEMIES[e.kind].r);
+}
+
 /** Neuer Gegner. Leben, Tempo und Schaden hängen vom Level ab und gelten danach unverändert. */
-export function makeEnemy(kind: EnemyKind, x: number, y: number, level = 1): Enemy {
+export function makeEnemy(kind: EnemyKind, x: number, y: number, level = 1, weapon: WeaponId | null = kind === 'gunner' ? 'pistol' : null): Enemy {
   const stats = enemyStats(kind, level);
   return {
     kind, level, x, y, hp: stats.hp, maxHp: stats.hp, speed: stats.speed, damage: stats.damage, 
     pushX: 0, pushY: 0, kicked: false, dead: false, suicide: false,
     lastHit: 'gun', action: 0, hitFlash: 0, dashHit: false, slideHit: false, laserCooldown: 0,
-    cooldown: GUNNER_COOLDOWN, windup: 0, melee: null, fuse: null, angle: 0,
+    cooldown: GUNNER_FIRST_SHOT, windup: 0, weapon, volley: 0, hold: 0, melee: null, fuse: null, angle: 0,
     boss: kind === 'boss' ? newBossState() : null, swarm: false,
   };
 }
@@ -159,7 +207,7 @@ export function stepSpawns(g: Game) {
   g.spawns = g.spawns.filter((s) => {
     s.t -= STEP;
     if (s.t > 0) return true;
-    const e = makeEnemy(s.kind, s.x, s.y, g.room);
+    const e = makeEnemy(s.kind, s.x, s.y, g.room, s.kind === 'gunner' ? pickWeapon(g) : null);
     e.swarm = s.swarm ?? false;
     g.enemies.push(e);
     return false;
@@ -280,22 +328,36 @@ export function stepEnemies(g: Game) {
           }
           break;
         case 'gunner': {
-          // hält Abstand und umkreist die Figur
-          const [near, far] = GUNNER_RANGE;
+          // hält je nach Waffe Abstand und umkreist die Figur
+          const rd = rangedOf(e);
+          const [near, far] = rd.range;
           const radial = dist > far ? 1 : dist < near ? -1 : 0;
           moveX = (toX * radial - toY * 0.5) * e.speed;
           moveY = (toY * radial + toX * 0.5) * e.speed;
-          if (e.windup > 0) {
+          if (e.hold > 0) {
+            moveX = moveY = 0; // steht still: Pause in der Salve oder Strahl brennt
+            e.hold -= STEP;
+            if (e.hold <= 0 && e.volley > 0) {
+              fireRanged(g, e, rd);
+              e.volley--;
+              if (e.volley > 0) e.hold = rd.burst?.gap ?? 0;
+            }
+          } else if (e.windup > 0) {
             moveX = moveY = 0; // steht beim Zielen still
             e.windup -= STEP;
             if (e.windup <= 0) {
-              enemyShot(g, e.x + toX * def.r, e.y + toY * def.r, toX * GUNNER_SHOT_SPEED, toY * GUNNER_SHOT_SPEED,
-                scaledDamage(GUNNER_SHOT_DAMAGE, e.level));
-              e.cooldown = GUNNER_COOLDOWN;
+              fireRanged(g, e, rd);
+              e.cooldown = rd.cooldown; // läuft erst ab, wenn sie wieder frei ist
+              if (rd.burst) {
+                e.volley = rd.burst.count - 1;
+                e.hold = rd.burst.gap;
+              } else if (rd.hold) {
+                e.hold = rd.hold;
+              }
             }
           } else {
             e.cooldown -= STEP;
-            if (e.cooldown <= 0) e.windup = GUNNER_WINDUP;
+            if (e.cooldown <= 0) e.windup = rd.windup;
           }
           break;
         }

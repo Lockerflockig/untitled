@@ -146,6 +146,9 @@ export interface Enemy {
   laserCooldown: number;
   cooldown: number; // Zeit bis zum nächsten Angriff (Geschützdrohne)
   windup: number; // > 0: zielt gerade und feuert gleich
+  weapon: WeaponId | null; // Fernkämpfer: die Waffe seiner Klasse, bleibt ein Leben lang
+  volley: number; // Fernkämpfer: so viele Schüsse einer Salve stehen noch aus
+  hold: number; // Fernkämpfer: > 0 steht er still (Pause zwischen Salvenschüssen, Ladezeit des Strahls)
   melee: Melee | null; // Nahkampf-Angriff, solange er läuft (Jagddrohne)
   fuse: number | null; // Sprengdrohne: Zeit bis zur Detonation
   angle: number; // Blickrichtung (Schilddrohne)
@@ -269,6 +272,7 @@ export interface RoomPlan {
   objective: ObjectiveType;
   goal: number;
   mix: [EnemyKind, number][]; // Gegnertypen mit Gewicht
+  gunners: [WeaponId, number][]; // Klassen der Fernkämpfer (Waffe) mit Gewicht
   maxEnemies: number;
   spawnEvery: number;
   laserEvery: [number, number];
