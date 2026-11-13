@@ -116,6 +116,18 @@ const guns: Record<WeaponId, HTMLImageElement> = {
   saw: load('assets/guns/saw.png'),
 };
 
+/** Waffenbild an einer Stelle, in Zielrichtung gedreht (für Gegner, die eine Waffe führen). Ohne Bild passiert nichts. */
+export function drawGunIcon(ctx: Ctx, weapon: WeaponId, x: number, y: number, angle: number, scale = 0.7) {
+  const img = guns[weapon];
+  if (!loaded(img)) return;
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(angle);
+  if (Math.cos(angle) < 0) ctx.scale(1, -1); // nach links gedreht steht die Waffe nicht auf dem Kopf
+  ctx.drawImage(img, -img.width * GRIP_X * scale, -img.height * GRIP_Y * scale, img.width * scale, img.height * scale);
+  ctx.restore();
+}
+
 /** Erst wenn alle Bilder des Charakters da sind, wird er als Sprite gezeichnet. */
 export function spritesReady(character: CharacterId) {
   const s = SPRITES[character];

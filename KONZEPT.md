@@ -126,12 +126,31 @@ nur die Bewegung eingeschränkt haben **[fest]**.
 | Gegner **[Vorschlag]** | Verhalten | Konter | ab Raum |
 |---|---|---|---|
 | Jagddrohne | fliegt auf die Figur zu und schlägt mit Angriffsanimation (kein Berührungsschaden) | aus dem Bogen laufen, Dash; Kick oder Treffer unterbrechen; ideal zum Kicken | 1 |
-| Geschützdrohne | hält Abstand, zielt sichtbar, schießt hoch | ducken, dann hin | 3 |
+| Geschützdrohne | Fernkämpfer in zehn Klassen nach Waffe: hält Abstand, zielt sichtbar, schießt hoch | ducken, dann hin | 3 |
 | Sprengdrohne | läuft mit dem 1,5-fachen Tempo der Figur zu, zündet nahe der Figur, Warnton; explodiert nur durch ihre Lunte | rechtzeitig abschießen oder wegkicken (dann keine Explosion) | 4 |
 | Schilddrohne | blockt Schüsse von vorn, richtet den Schild langsam zur Figur aus; explodiert beim Zerstören | umlaufen, Dash, Kick, Granate; Abstand zur Explosion halten | 6 |
 | Schwerer Mech | viel Leben, viel Masse | Umgebung nutzen, Dauerfeuer | 7 |
 
 Die Namen sind Arbeitstitel. Gegner kündigen ihr Erscheinen an.
+
+**Fernkämpfer (Geschützdrohne):** Jeder führt genau eine Waffe aus `WEAPONS` und
+behält sie. Klassen und Level, ab dem sie vorkommen: Pistole 1, Schwerlaser 5,
+Schrot 10, MP 15, Granate 20, Flammenwerfer 25, Präzisionsgewehr 30,
+Kettenblitz 35, Impulskanone 40, Sägeblatt 45 – alle fünf Level eine mehr, und
+freigeschaltete bleiben im Vorrat; welche Klasse erscheint, wird unter ihnen
+ausgewürfelt. Gegen die Version der Figur sind sie schwächer: Geschosse 45 %
+so schnell (gleiche Reichweite), Flächenschaden halber Radius, eigene längere
+Abklingzeit und eigener Grundwert für den Schaden je Waffe (`RANGED` in
+`src/sim/enemies.ts`; MP und Flammenwerfer feuern Salven). Jeder Schuss kündigt
+sich an (Zielen 0,4 s; der Schwerlaser als Strahl, der sich mindestens 0,8 s
+zeigt). Kurzstrecken-Waffen (Schrot, Flammenwerfer) halten 140–200 px Abstand,
+die übrigen 260–340 px. Geschosse fliegen auf Höhe „hoch" (unterduckbar),
+Strahl und Explosionen treffen jede Höhe. Schaden, Leben und Tempo skalieren
+mit dem Level, Geschosstempo und Radius nicht. Fernkämpfer verletzen nie durch
+Berührung. Der Zielring zeigt die Klasse an der Farbe, dazu trägt die Drohne
+das Waffenbild (sofern vorhanden). Im Testmodus (`?test`) folgen auf die Räume
+4–8 die Räume 9–18 nur mit Fernkämpfern, je Raum eine Klasse mehr, die neue am
+häufigsten.
 
 **Jagddrohne:** Sie verletzt nicht mehr durch Berührung. Sobald die Figur in
 Reichweite ist (50 px ab Rand der Drohne, der Körper der Figur zählt), bleibt

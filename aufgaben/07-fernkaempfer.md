@@ -1,6 +1,6 @@
 # 07 – Fernkämpfer mit den Waffen der Figur
 
-Status: offen · baut auf 01 und auf P1 auf (beide erledigt)
+Status: erledigt · baut auf 01 und auf P1 auf (beide erledigt)
 
 > **Frei zur Umsetzung.** P1 ist erledigt. Nach dieser Aufgabe ist Schluss; die
 > Reflexion am Schild (P2) bleibt beim Planer.
@@ -89,8 +89,25 @@ sie auf `enemyFire` mit der Pistole um.
 
 ## Aufgefallen
 
-(vom umsetzenden Agenten auszufüllen)
+- **Alle Zahlen sind Startwerte.** Schaden (Pistole 12, Schwerlaser 25, Schrot 7 je Pellet, MP 5, Granate 22, Flammenwerfer 4, Präzisionsgewehr 28, Kettenblitz 14, Impulskanone 8, Sägeblatt 12), Abklingzeit und Salven stehen in `RANGED`; die Aufgabe gab nur die Pistole vor (12, 1,1 s, 0,4 s). Die übrigen sind geschätzt und ungetestet im Spielgefühl.
+- **MP und Flammenwerfer feuern Salven** (4 Schüsse im Abstand 0,12 s bzw. 6 im Abstand 0,09 s, die Drohne steht dabei still), weil ein Einzelschuss bei diesen Waffen sinnlos wäre. Die Aufgabe nennt das nicht ausdrücklich; es folgt aus „je Waffe eigene Abklingzeit" und kann über `burst` je Klasse abgeschaltet werden.
+- **Kettenblitz, Impulskanone und Sägeblatt gegen die Figur:** Das Springen des Blitzes (`chain`) und der Rückstoß des Impulses (`push`) wirken nur gegen Gegner; auf die Figur macht der Fernkämpfer-Schuss damit einfach seinen Schaden. Das Sägeblatt prallt dreimal von den Wänden ab. Die Vorgabe der offenen Frage („ja, alle") ist so umgesetzt; ob sie fair sind, zeigt das Spielen.
+- **Schwerlaser:** Die Drohne zielt nur 0,2 s, danach kündigt sich der Strahl 0,8 s lang an (Dauer aus `ENEMY_BEAM_CHARGE`), dann brennt er 0,25 s. Sie steht still, bis er durch ist (`hold` 1,1 s). Der Strahl ist „voll" (magenta) und trifft den Geduckten; nur Dash schützt. Vorher zeichnete der Renderer jeden Strahl blau; er nimmt jetzt die Höhe des Strahls.
+- **Zielring und Waffenbild:** Die Klasse erkennt man am Ring (`RANGED_COLOR` in `src/sprites.ts`) und am Waffenbild (`drawGunIcon` in `src/playerSprite.ts`). Die Bilder fehlen im Repository; ohne sie bleibt nur der Ring, und das Ersatz-Bild der Drohne (Kreis) ist für alle Klassen gleich orange. Die Geschosse haben weiter die Form der Waffe der Figur mit dem blauen Ring der Feindmarkierung aus P1; eine eigene „Feindfarbe" je Geschossform habe ich nicht dazugebaut.
+- Die Ankündigung des Erscheinens (gestrichelter Ring am Boden) zeigt die Klasse noch nicht; die Klasse wird erst beim Erscheinen gewürfelt.
+- Der Schaden an der Figur durch den Schrot-Fächer ist praktisch der eines Pellets, weil die Schonzeit (0,6 s) nach dem ersten Treffer die übrigen schluckt (Bestand).
+- Rennen die Räume des Testmodus durch, folgt ab Raum 19 die normale Raumfolge; die bisherige Prüfung „nach Raum 8" prüft deshalb jetzt Raum 19 (Regel 12 ändert genau das).
 
 ## Übergabe an den Planer
 
-(vom umsetzenden Agenten auszufüllen: umgesetzte und bewusst ausgelassene Regeln; neue Felder, Funktionen und Konstanten mit Datei; geänderte Prüfungen; was im Browser angesehen wurde)
+**Umgesetzt:** Regeln 1–12 vollständig. Vorgaben der offenen Fragen eingehalten (Reihenfolge wie in der Tabelle; alle zehn Klassen).
+
+**Neue Felder, Funktionen, Konstanten:**
+- `src/sim/enemies.ts`: `RangedDef` und die Tabelle `RANGED` (Waffe → `windup`, `cooldown`, `damage`, `range`, optional `burst`, `hold`), `RANGED_ORDER`, `rangedUnlockLevel(waffe)`, `unlockedRanged(level)`, `rangedOf(e)`; Die Geschützdrohne feuert jetzt über `enemyFire` (Pistole = die alte Klasse). Konstanten der alten Geschützdrohne (`GUNNER_RANGE`, `GUNNER_SHOT_SPEED`, `GUNNER_SHOT_DAMAGE`, `GUNNER_WINDUP`) entfallen. `makeEnemy(kind, x, y, level, weapon)`.
+- `src/sim/types.ts`: `Enemy.weapon`, `Enemy.volley`, `Enemy.hold`; `RoomPlan.gunners` (Klassen mit Gewicht).
+- `src/sim/game.ts`: `roomPlan` setzt `gunners: unlockedRanged(n)`; `testPlan` kennt die Räume 9–18.
+- `src/sprites.ts`: `RANGED_COLOR`; `src/playerSprite.ts`: `drawGunIcon`; `src/render.ts`: `drawRangedWeapon`, Strahlfarbe nach Höhe.
+
+**Geänderte Prüfungen:** „Testmodus: nach Raum 8 … gilt die normale Raumfolge" prüft jetzt Raum 19 (Regel 12 verlängert den Testmodus). Neu: Abschnitte „Fernkämpfer-Klassen" und „Testmodus: Fernkämpfer-Räume" in `tests/rules.ts` (Freischaltung, Spawn je Level, Waffe bleibt und kein Berührungsschaden, Tempo 45 %, Ankündigung, Schaden Level 6, Strahl-Ankündigung und -Schaden, Schrot-Fächer, Abstände, Granate: Radius 45, trifft Figur innen und nicht außen, trifft Gegner, Testmodus-Räume).
+
+**Im Browser angesehen (Chromium):** Eine eigens gezeichnete Szene mit sieben Fernkämpfern (Pistole, Schrot, Granate, Schwerlaser, Flammenwerfer, MP, Präzisionsgewehr) mitten im Feuern: Schwerlaser-Strahl in Magenta, Schrot-Fächer, Flammen, Granate, die Geschosse mit blauem Feind-Ring. Außerdem Rauchtests im Testmodus (`?test&raum=12` und `raum=18`, „Test · Raum 18" in der Leiste) ohne Konsolenfehler. **Nicht** gesehen: Sprite, Waffenbilder und Klassen-Ringe im Spielbild (Bilder fehlen im Repository).

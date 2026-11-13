@@ -5,7 +5,7 @@ import type { Game, Input, ObjectiveType, RoomPlan, Stats, EnemyKind } from './t
 import { BANANA_R, BLAST_TIME, ENEMIES, PLAYER_R, award, explode, rand, spot } from './core.ts';
 import { stepPlayer, stepPlayerBeam } from './player.ts';
 import { stepBullets } from './projectiles.ts';
-import { BOSS_FIRST, makeEnemy, stepEnemies, stepSpawns } from './enemies.ts';
+import { BOSS_FIRST, RANGED_ORDER, makeEnemy, stepEnemies, stepSpawns, unlockedRanged } from './enemies.ts';
 import { TURRET_HP, stepHazards } from './hazards.ts';
 import { rollOffers, stepPickups } from './loot.ts';
 
@@ -45,8 +45,10 @@ const BOSS_ROOM = { maxEnemies: 3, spawnEvery: 4 }; // im Boss-Raum kommen nur w
 // Adresse). Die Raumfolge zeigt alles nacheinander:
 //   Raum 1–3   der Boss in seinen drei Stufen (als Boss aus Level 5, 10 und 15)
 //   Raum 4–8   je Raum ein Gegnertyp mehr, der neue kommt am häufigsten
+//   Raum 9–18  nur Fernkämpfer, je Raum eine Waffen-Klasse mehr (Raum 9: Pistole, Raum 10
+//              dazu Schwerlaser …), die neue Klasse kommt am häufigsten
 //   danach     die normale Raumfolge
-// Die Räume 4–8 haben „Säubern" mit kleinem Ziel und außer Lasern keine Gefahren,
+// Diese Räume haben „Säubern" mit kleinem Ziel und außer Lasern keine Gefahren,
 // damit man die Gegner in Ruhe ansehen kann.
 
 export const testMode = { on: false };
@@ -61,17 +63,22 @@ function testPlan(n: number): RoomPlan | null {
   const lasers = { laserEvery: [3.5, 5.5] as [number, number], maxLasers: 2 };
   if (n <= TEST_BOSS_ROOMS) {
     return {
-      objective: 'boss', goal: 1, mix: [['hunter', 1]],
+      objective: 'boss', goal: 1, mix: [['hunter', 1]], gunners: [['pistol', 1]],
       maxEnemies: BOSS_ROOM.maxEnemies, spawnEvery: BOSS_ROOM.spawnEvery,
       ...lasers, ...quiet, barrels: 2,
     };
   }
   const kinds = n - TEST_BOSS_ROOMS;
-  if (kinds > SPAWN_MIX.length) return null;
+  const classes = kinds - SPAWN_MIX.length; // Waffen-Klassen der Fernkämpfer in diesem Raum
+  if (classes > RANGED_ORDER.length) return null;
+  // was in diesem Raum neu ist, wird dreimal so oft gewürfelt wie die übrigen
+  const weighted = <T,>(items: T[]): [T, number][] => items.map((item, i): [T, number] => [item, i === items.length - 1 ? 6 : 2]);
   return {
     objective: 'clear', goal: TEST_CLEAR_GOAL,
-    // der Typ, der in diesem Raum neu ist, wird dreimal so oft gewürfelt wie die übrigen
-    mix: SPAWN_MIX.slice(0, kinds).map((m, i): [EnemyKind, number] => [m.kind, i === kinds - 1 ? 6 : 2]),
+    mix: classes > 0
+      ? [['gunner', 1]]
+      : weighted(SPAWN_MIX.slice(0, kinds).map((m) => m.kind)),
+    gunners: classes > 0 ? weighted(RANGED_ORDER.slice(0, classes)) : [['pistol', 1]],
     maxEnemies: 5, spawnEvery: 1.6,
     ...lasers, ...quiet, barrels: 0,
   };
@@ -105,6 +112,7 @@ export function roomPlan(n: number): RoomPlan {
     objective,
     goal,
     mix,
+    gunners: unlockedRanged(n),
     // Im Boss-Raum kommen nur wenige Begleiter; der Boss legt seine Bodenfelder selbst
     maxEnemies: boss ? BOSS_ROOM.maxEnemies : Math.min(MAX_ENEMIES.cap, MAX_ENEMIES.base + MAX_ENEMIES.perLevel * n),
     spawnEvery: boss ? BOSS_ROOM.spawnEvery : Math.max(SPAWN_EVERY.min, SPAWN_EVERY.start - SPAWN_EVERY.perLevel * n),
