@@ -3,15 +3,16 @@
 
 import { STEP } from '../src/sim/types.ts';
 import type { BossAbility, Enemy, EnemyKind, Field, Game, Input, Laser, Stats } from '../src/sim/types.ts';
-import { newGame, roomPlan, step } from '../src/sim/game.ts';
+import { newGame, roomPlan, step, testMode } from '../src/sim/game.ts';
 import {
   BOMB_SPEED, CHARGE_LOAD, CHARGE_LOCK, PYLON_TIME, RETREAT_SHOW, SHIELD_BLAST_RADIUS, SHIELD_TURN, SPAWN_WARN, alarmsOf,
-  bossTint, makeEnemy, startAbility,
+  bossAbilities, bossTint, makeEnemy, startAbility,
 } from '../src/sim/enemies.ts';
 import { ALARM_INTERVAL, AlarmLoops } from '../src/alarmLoop.ts';
 import { spawnLaser } from '../src/sim/hazards.ts';
 import { ENEMIES, enemyStats } from '../src/sim/core.ts';
 import { describeOffer, rollOffers, takeOffer } from '../src/sim/loot.ts';
+import { ENEMY_SPEED_FACTOR, enemyFire } from '../src/sim/projectiles.ts';
 import {
   buyCharacter, buyUnlock, buyUpgrade, defaultSave, sanitize, selectCharacter, statsFrom,
 } from '../src/sim/meta.ts';
@@ -58,6 +59,8 @@ function bossRoom(room: number): Game {
   g.turrets = [];
   return g;
 }
+/** Projektile, die von Gegnern stammen. */
+const shots = (g: Game) => g.bullets.filter((b) => b.side === 'enemy');
 const laser = (height: Laser['height'], pos: number): Laser => ({ vertical: true, pos, speed: 0, height, warn: 0, life: 1e9 });
 
 console.log('--- Laser-Höhen ---');
@@ -292,8 +295,8 @@ console.log('--- Skalierung mit dem Level ---');
   const shotDamage = (level: number) => {
     const g = quiet();
     g.enemies.push(makeEnemy('gunner', g.x + 300, g.y, level));
-    for (let i = 0; i < 400 && g.shots.length === 0; i++) step(g, idle(g));
-    return g.shots[0]?.damage;
+    for (let i = 0; i < 400 && shots(g).length === 0; i++) step(g, idle(g));
+    return shots(g)[0]?.damage;
   };
   check('Geschoss einer Geschützdrohne aus Level 6 macht mehr Schaden als aus Level 1 (16 gegen 12)',
     shotDamage(1) === 12 && shotDamage(6) === 16, { one: shotDamage(1), six: shotDamage(6) });
@@ -343,8 +346,8 @@ console.log('--- Skalierung mit dem Level ---');
     const g = bossRoom(room);
     const b = g.enemies.find((e) => e.kind === 'boss')!;
     startAbility(g, b, ability);
-    for (let i = 0; i < 600 && g.shots.length + g.fields.length === 0; i++) step(g, idle(g));
-    return ability === 'fan' ? g.shots[0]?.damage : g.fields[0];
+    for (let i = 0; i < 600 && shots(g).length + g.fields.length === 0; i++) step(g, idle(g));
+    return ability === 'fan' ? shots(g)[0]?.damage : g.fields[0];
   };
   const [shot5, shot10] = [first(5, 'fan'), first(10, 'fan')];
   const [field5, field10] = [first(5, 'fields') as Field, first(10, 'fields') as Field];
@@ -447,7 +450,7 @@ console.log('--- Boss: Panzer ---');
     // benommen: 1 s lang keine Fähigkeit, keine Bewegung
     const [x, y] = [b.x, b.y];
     run(g, 0.98);
-    const still = b.boss!.phase === 'stunned' && b.x === x && b.y === y && g.shots.length === 0 && g.fields.length === 0 && g.pylon === null;
+    const still = b.boss!.phase === 'stunned' && b.x === x && b.y === y && shots(g).length === 0 && g.fields.length === 0 && g.pylon === null;
     run(g, 0.04);
     check('Charge: Nach dem Aufprall 1 s untätig, danach Pause', still && b.boss!.phase === 'rest', b.boss!.phase);
   }
@@ -1311,6 +1314,98 @@ console.log('--- Shop und Charaktere ---');
   run(g, 1, () => ({ fire: true }));
   check('MP: etwa elf Schüsse pro Sekunde', g.bullets.length + 0 >= 0 && Math.abs(g.events.filter((e) => e === 'shoot').length - 11) <= 1,
     { shots: g.events.filter((e) => e === 'shoot').length });
+}
+
+console.log('--- Gemeinsames Projektil-System (P1) ---');
+{
+  // Ein Gegner rechts von der Figur feuert eine Waffe nach links auf sie
+  const shooter = (weapon: Parameters<typeof enemyFire>[2], dx = 300) => {
+    const g = quiet();
+    const e = add(g, 'gunner', dx);
+    e.cooldown = 1e9; // schießt nicht von sich aus
+    enemyFire(g, e, weapon, Math.PI, 12, dx);
+    return { g, e };
+  };
+  {
+    const { g } = shooter('pistol');
+    const b = g.bullets[0];
+    const speed = Math.hypot(b.vx, b.vy);
+    run(g, 2);
+    check('Gegner feuert eine Pistole: Projektil gehört ihm, ist langsamer und trifft die Figur',
+      b.side === 'enemy' && !b.reflected && Math.abs(speed - 900 * ENEMY_SPEED_FACTOR) < 1 && g.hp === 100 - 12 && shots(g).length === 0,
+      { side: b.side, speed, hp: g.hp });
+  }
+  {
+    const { g, e } = shooter('pistol');
+    const other = add(g, 'gunner', 150); // steht in der Schusslinie
+    other.cooldown = 1e9;
+    run(g, 2, () => ({ duck: true }));
+    check('Projektile von Gegnern treffen keine Gegner und lassen sich unterducken',
+      other.hp === other.maxHp && e.hp === e.maxHp && g.hp === 100, { other: other.hp, hp: g.hp });
+  }
+  {
+    const { g } = shooter('shotgun', 120);
+    check('Gegner feuert Schrot: sechs Projektile', shots(g).length === 6, { n: shots(g).length });
+  }
+  {
+    const hit = shooter('grenade', 300);
+    hit.g.x = hit.g.prevX = hit.g.x + 30; // 30 px hinter dem Einschlag: im halben Radius (45 px)
+    run(hit.g, 2);
+    const miss = shooter('grenade', 300);
+    miss.g.x = miss.g.prevX = miss.g.x - 80; // 80 px davor: außerhalb
+    run(miss.g, 2);
+    check('Gegnerische Granate: halber Radius, trifft die Figur darin und außerhalb nicht',
+      hit.g.blasts.length + miss.g.blasts.length >= 0 && hit.g.hp === 88 && miss.g.hp === 100, { hit: hit.g.hp, miss: miss.g.hp });
+  }
+  {
+    const { g } = shooter('rail');
+    const announced = g.beams.length === 1 && g.beams[0].phase === 'lock' && g.bullets.length === 0;
+    run(g, 0.5);
+    const duringCharge = g.hp;
+    run(g, 1, () => ({ duck: true }));
+    check('Gegner feuert den Schwerlaser: kündigt sich an, trifft dann auf jeder Höhe',
+      announced && duringCharge === 100 && g.hp === 88 && g.beams.length === 0, { announced, duringCharge, hp: g.hp });
+  }
+  {
+    // Ein reflektiertes Projektil der Figur trifft beide Seiten und zählt unter Gegnern als Umgebung
+    const g = quiet();
+    const e = add(g, 'hunter', -120);
+    step(g, idle(g, { fire: true, duck: true }));
+    const b = g.bullets[0];
+    b.reflected = true;
+    b.vx = -b.vx; // kommt zurück, durch die Figur hindurch auf den Gegner dahinter
+    g.streak = 0;
+    run(g, 0.4, () => ({ duck: true }));
+    check('Reflektiert: trifft die Figur (auch geduckt) und danach nichts mehr', g.hp === 80 && e.hp === e.maxHp, { hp: g.hp, e: e.hp });
+    const g2 = quiet();
+    const e2 = add(g2, 'hunter', -120);
+    e2.hp = 10;
+    step(g2, idle(g2, { fire: true }));
+    g2.bullets[0].reflected = true;
+    g2.bullets[0].vx *= -1;
+    g2.invuln = 1; // die Figur lässt es durch
+    run(g2, 0.4);
+    check('Reflektiert: Kill unter Gegnern zählt als Umgebung (×2)', g2.kills === 1 && g2.score === 200, { kills: g2.kills, score: g2.score });
+  }
+}
+
+console.log('--- Testmodus ---');
+{
+  const normal = [1, 2, 3, 4, 5].map((n) => roomPlan(n).objective).join();
+  testMode.on = true;
+  const plans = [1, 2, 3, 4, 5, 6, 7, 8].map(roomPlan);
+  const bosses = [1, 2, 3].map((n) => newGame(baseStats(), n).enemies.find((e) => e.kind === 'boss')!);
+  const after = roomPlan(9).objective;
+  testMode.on = false;
+  check('Testmodus: Boss in Raum 1–3 in seinen drei Stufen (Level 5, 10, 15)',
+    plans.slice(0, 3).every((p) => p.objective === 'boss') && bosses.map((b) => b.level).join() === '5,10,15'
+    && bosses.map((b) => bossAbilities(b.level).length).join() === '3,4,5', bosses.map((b) => b.level));
+  check('Testmodus: ab Raum 4 je Raum ein Gegnertyp mehr, der neue am häufigsten',
+    plans.slice(3).map((p) => p.mix.map(([k]) => k).join('+')).join() === 'hunter,hunter+gunner,hunter+gunner+bomber,hunter+gunner+bomber+shield,hunter+gunner+bomber+shield+heavy'
+    && plans.slice(3).every((p) => p.objective === 'clear' && p.mix[p.mix.length - 1][1] === 6),
+    plans.slice(3).map((p) => p.mix));
+  check('Testmodus: nach Raum 8 und ohne Testmodus gilt die normale Raumfolge',
+    after === roomPlan(9).objective && normal === 'collect,clear,collect,survive,boss' && newGame(baseStats(), 1).enemies.length === 0);
 }
 
 console.log(failed === 0 ? '\nAlle Prüfungen bestanden.' : `\n${failed} Prüfung(en) fehlgeschlagen.`);

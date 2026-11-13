@@ -1,10 +1,9 @@
 # 07 – Fernkämpfer mit den Waffen der Figur
 
-Status: **gesperrt** · baut auf 01 und auf P1 (Planer) auf
+Status: offen · baut auf 01 und auf P1 auf (beide erledigt)
 
-> **STOPP für den umsetzenden Agenten:** Diese Aufgabe nicht beginnen und
-> nichts dafür vorbereiten. Sie ist erst frei, wenn der Planer P1 erledigt und
-> den Status hier auf „offen" gesetzt hat.
+> **Frei zur Umsetzung.** P1 ist erledigt. Nach dieser Aufgabe ist Schluss; die
+> Reflexion am Schild (P2) bleibt beim Planer.
 
 ## Ziel
 
@@ -15,16 +14,19 @@ steigendem Level kommen neue Klassen dazu.
 ## Ist-Zustand
 
 - Typ `gunner` in `src/sim/enemies.ts`: hält 260–340 px Abstand, umkreist die Figur, zielt 0,4 s sichtbar und feuert dann ein einzelnes Geschoss auf Höhe „hoch".
-- Die Waffen der Figur stehen in `WEAPONS` (`src/sim/meta.ts`); ihre Geschosse laufen in `src/sim/player.ts`.
+- Die Waffen der Figur stehen in `WEAPONS` (`src/sim/meta.ts`); alle Projektile laufen in `src/sim/projectiles.ts`.
 
-## Voraussetzung: P1 [Planer]
+## Voraussetzung: P1 – erledigt
 
-Die Geschosse der Figur und der Gegner laufen heute getrennt. Damit ein Gegner
-„dieselbe Waffe" abfeuern kann, braucht es ein gemeinsames Projektil-System,
-in dem jedes Projektil weiß, wem es gehört. Das setzt der Planer um (siehe
-`LIESMICH.md`, „Dem Planer vorbehalten"). **Diese Aufgabe beginnt erst, wenn
-P1 erledigt ist.** P1 stellt bereit: eine Funktion, mit der ein Gegner eine
-Waffe aus `WEAPONS` in eine Richtung abfeuert.
+Die Projektile beider Seiten laufen in einem System, in dem jedes Projektil
+weiß, wem es gehört. Ein Fernkämpfer feuert mit
+`enemyFire(g, e, waffe, winkel, schaden, reichweite?)`; Tempo, Radius und Höhe
+sind dort bereits für Gegner abgeschwächt (Regel 4, Zeilen „Geschosstempo" und
+„Flächenschaden-Radius"). Was P1 genau bereitstellt, steht in `LIESMICH.md`
+unter „Was P1 bereitstellt".
+
+Die bisherige Geschützdrohne feuert noch über `enemyShot`. Diese Aufgabe stellt
+sie auf `enemyFire` mit der Pistole um.
 
 ## Regeln
 
@@ -62,6 +64,7 @@ Waffe aus `WEAPONS` in eine Richtung abfeuert.
 9. **Fernkämpfer verletzen nicht durch Berührung [fest]**, in keiner Klasse.
 10. Die bisherige Geschützdrohne ist die Klasse „Pistole" und bleibt in ihren Werten, soweit diese Aufgabe nichts anderes sagt.
 11. Welche Klasse erscheint, wird unter den freigeschalteten ausgewürfelt. Wie viele Fernkämpfer auf wie viele Nahkämpfer kommen, wird später eigens festgelegt; bis dahin bleibt das heutige Gewicht der Geschützdrohne im Raum.
+12. **Testmodus [fest]:** Im Testmodus (`?test`, siehe `testPlan` in `src/sim/game.ts`) folgen auf die Räume mit den Gegnertypen (4–8) Räume für die Fernkämpfer: je Raum eine Waffen-Klasse mehr, in der Reihenfolge der Tabelle, die neue Klasse am häufigsten. Raum 9 hat nur Pistolen-Fernkämpfer, Raum 10 dazu Schwerlaser, und so weiter. In diesen Räumen erscheinen nur Fernkämpfer.
 
 ## Darstellung
 

@@ -20,7 +20,7 @@ export type ModuleId =
   | 'magnet' | 'longdash' | 'heavyboot' | 'steady' | 'plating' | 'combo'
   | 'doublejump' | 'slider' | 'chainreaction' | 'blastkick' | 'shieldgen' | 'adrenaline' | 'ricochet' | 'quickdraw';
 /** Wie ein Geschoss aussieht. */
-export type BulletLook = 'bullet' | 'grenade' | 'tracer' | 'flame' | 'bolt' | 'pulse' | 'saw';
+export type BulletLook = 'shot' | 'bullet' | 'grenade' | 'tracer' | 'flame' | 'bolt' | 'pulse' | 'saw';
 export type EnemyKind = 'hunter' | 'gunner' | 'shield' | 'bomber' | 'heavy' | 'boss';
 export type ObjectiveType = 'collect' | 'clear' | 'survive' | 'destroy' | 'boss';
 
@@ -153,8 +153,11 @@ export interface Enemy {
   swarm: boolean; // gehört zum Schwarm eines Sendemasts; zählt nicht gegen maxEnemies
 }
 
-/** Geschoss der Figur. */
+/** Ein Projektil – der Figur oder eines Gegners. */
 export interface Bullet {
+  side: 'player' | 'enemy'; // wer es abgefeuert hat
+  reflected: boolean; // von einem Schild zurückgeworfen – trifft dann beide Seiten
+  height: Height; // auf welcher Höhe es fliegt: 'high' lässt sich unterducken, 'full' nicht
   x: number;
   y: number;
   vx: number;
@@ -189,15 +192,6 @@ export interface PlayerBeam {
   hit: (Enemy | Turret | Pylon)[]; // schon getroffen – jeder höchstens einmal je Strahl
 }
 
-/** Geschoss eines Gegners oder Geschützes; fliegt auf Höhe "hoch". */
-export interface Shot {
-  x: number;
-  y: number;
-  vx: number;
-  vy: number;
-  damage: number;
-}
-
 export interface Laser {
   vertical: boolean;
   pos: number;
@@ -215,6 +209,8 @@ export interface Beam {
   dy: number;
   phase: 'track' | 'lock' | 'fire';
   t: number;
+  damage?: number; // Strahl eines Gegners: eigener Schaden; sonst der des Zielstrahls
+  height?: Height; // sonst 'high'
 }
 
 /** Spur am Boden, etwa der Brandfleck einer Explosion. Gilt nur im Raum, in dem sie entstanden ist. */
@@ -369,7 +365,6 @@ export interface Game {
   barrels: Barrel[];
   turrets: Turret[];
   pylon: Pylon | null; // Sendemast des Panzers, höchstens einer
-  shots: Shot[];
   blasts: { x: number; y: number; r: number; t: number; kind: BlastKind }[];
   marks: Mark[]; // Spuren am Boden; bleiben bis zum Wechsel in den nächsten Raum
   bananas: { x: number; y: number }[];

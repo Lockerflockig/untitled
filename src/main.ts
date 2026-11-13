@@ -1,7 +1,7 @@
 import { ARENA, STEP } from './sim/types.ts';
 import type { CharacterId, Game, Input, Level, ModuleId, WeaponId } from './sim/types.ts';
 import { levelOf, streakMultiplier } from './sim/core.ts';
-import { newGame, step } from './sim/game.ts';
+import { newGame, step, testMode } from './sim/game.ts';
 import {
   CHARACTERS, CHARACTER_IDS, MODULES, UNLOCKS, UPGRADES, WEAPONS,
   buyCharacter, buyUnlock, buyUpgrade, loadSave, persist, selectCharacter, statsFrom, upgradeCost,
@@ -29,6 +29,9 @@ const LEVEL_NAME: Record<Level, string> = { low: 'Boden', mid: 'Mitte', high: 'O
 
 // Zum Testen: ?raum=6 startet direkt in Raum 6. Solche Runs werden nicht gutgeschrieben.
 const TEST_ROOM = Math.max(1, Math.floor(Number(new URLSearchParams(location.search).get('raum')) || 1));
+// Zum Testen: ?test schaltet die Test-Raumfolge ein (Boss in Raum 1–3, danach je Raum ein
+// Gegnertyp mehr; siehe sim/game.ts). Auch diese Runs werden nicht gutgeschrieben.
+testMode.on = new URLSearchParams(location.search).has('test');
 
 const save = loadSave();
 // Zum Testen: ?punkte=20000 schreibt einmalig Guthaben gut. Der Zusatz wird danach
@@ -127,7 +130,7 @@ const held = (...codes: string[]) => (codes.some((c) => keys.has(c)) ? 1 : 0);
 function start() {
   initAudio(); // Browser erlauben Ton erst nach einer Nutzeraktion
   game = newGame(runStats(), TEST_ROOM);
-  banked = TEST_ROOM > 1;
+  banked = TEST_ROOM > 1 || testMode.on;
   releaseAll();
   setScreen('playing');
 }
@@ -346,7 +349,7 @@ function updateHud() {
   hud.hpBar.style.width = `${(game.hp / s.maxHp) * 100}%`;
   hud.hpText.textContent = String(Math.max(0, game.hp));
   hud.lives.textContent = game.lives > 0 ? ` +${game.lives} Leben` : '';
-  hud.room.textContent = `Raum ${game.room}`;
+  hud.room.textContent = `${testMode.on ? 'Test · ' : ''}Raum ${game.room}`;
   hud.objective.textContent = objectiveText();
   hud.score.textContent = String(game.score);
   hud.multiplier.textContent = `×${(streakMultiplier(game) * game.plan.multiplier).toFixed(1)}`;

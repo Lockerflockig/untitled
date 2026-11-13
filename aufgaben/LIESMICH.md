@@ -15,8 +15,8 @@ geben, statt beides abzuschwächen.
 
 Diese Stellen sind verbindlich. Dahinter arbeitet der Planer weiter.
 
-1. **Nach Aufgabe 06 ist Schluss.** Aufgabe 07 nicht beginnen, auch nicht vorbereiten. Sie wartet auf P1.
-2. **P1 und P2 nicht anfassen.** Die beiden Listen `g.bullets` und `g.shots` bleiben getrennt, wie sie sind. Keine gemeinsame Projektil-Struktur einführen, kein Besitzer-Feld, keine Funktion, mit der Gegner Waffen aus `WEAPONS` abfeuern.
+1. **Nach Aufgabe 07 ist Schluss.** P1 ist erledigt, Aufgabe 07 ist frei. Danach nichts Weiteres beginnen.
+2. **P2 nicht anfassen.** Die Reflexion am Schild setzt der Planer um. Das Feld `reflected` am Projektil gibt es schon; es wird außerhalb der Prüfungen noch nirgends gesetzt, und das bleibt so. Am gemeinsamen Projektil-System (`src/sim/projectiles.ts`) nur anbauen, was Aufgabe 07 verlangt – die Treffer-Regeln in `stepBullets` nicht umbauen.
 3. **In Aufgabe 02 vor der Reflexion stoppen.** Umgesetzt werden Name, Ausrichtung, Explosion und Spuren (Regeln 1–3 und 10–16). Die Regeln 4–9 bleiben liegen; der Schild schluckt Projektile weiter wie bisher.
 4. **Nach jeder Aufgabe anhalten und übergeben:** Prüfungen und Build laufen lassen, committen, Status in der Aufgaben-Datei und in der Tabelle unten setzen, den Abschnitt „Übergabe an den Planer" ausfüllen. Dann erst die nächste Aufgabe beginnen.
 5. **Nichts aus „Vorgemerkt" umsetzen** und keine offenen Fragen selbst entscheiden – nach der Vorgabe bauen und die Frage stehen lassen.
@@ -46,7 +46,7 @@ Abnahme-Prüfungen bestehen; dann den Kopf der Datei und diese Tabelle auf
 | 04 | [Jagddrohne](04-jagddrohne.md) | 01 | erledigt |
 | 05 | [Laser vereinfachen](05-laser-vereinfachen.md) | – | erledigt |
 | 06 | [Boss: Panzer](06-boss-panzer.md) | 01, 03 | erledigt |
-| 07 | [Fernkämpfer mit Waffen](07-fernkaempfer.md) | 01, P1 | **gesperrt** – wartet auf P1, nicht beginnen |
+| 07 | [Fernkämpfer mit Waffen](07-fernkaempfer.md) | 01, P1 | offen |
 
 01 und 05 können sofort beginnen. 02, 03 und 04 fassen alle
 `src/sim/enemies.ts` an und sollten nacheinander laufen, nicht gleichzeitig.
@@ -60,8 +60,18 @@ vorbereitet, wie die Aufgabe es beschreibt.
 
 | Kürzel | Teil | Gebraucht für | Warum schwierig |
 |---|---|---|---|
-| P1 | Gemeinsames Projektil-System: Jedes Projektil kennt seinen Besitzer; Gegner können Waffen aus `WEAPONS` abfeuern; Projektile können die Seite wechseln | 02 (Reflexion), 07 | Geschosse der Figur und der Gegner laufen heute in zwei getrennten Listen mit getrennter Trefferlogik; das Zusammenführen berührt Treffer, Höhen, Punkte und die Darstellung |
-| P2 | Reflexion von Projektilen am Schild der Schilddrohne (Aufgabe 02, Regeln 4–9) | 02 | baut auf P1 auf |
+| P1 – **erledigt** | Gemeinsames Projektil-System: Jedes Projektil kennt seinen Besitzer; Gegner können Waffen aus `WEAPONS` abfeuern; Projektile können die Seite wechseln | 02 (Reflexion), 07 | Geschosse der Figur und der Gegner laufen heute in zwei getrennten Listen mit getrennter Trefferlogik; das Zusammenführen berührt Treffer, Höhen, Punkte und die Darstellung |
+| P2 – offen | Reflexion von Projektilen am Schild der Schilddrohne (Aufgabe 02, Regeln 4–9) | 02 | baut auf P1 auf |
+
+### Was P1 bereitstellt (`src/sim/projectiles.ts`)
+
+- **Eine Liste:** `g.bullets` enthält die Projektile beider Seiten. `g.shots` und der Typ `Shot` sind entfallen.
+- **Am Projektil:** `side` (`'player'` oder `'enemy'`), `reflected` und `height` (`'high'` lässt sich unterducken, `'full'` nicht). Projektile der Figur treffen Gegner und Gegenstände, Projektile von Gegnern treffen die Figur, reflektierte treffen beide. Was ein nicht von der Figur stammendes Projektil unter Gegnern anrichtet, zählt als Umgebung.
+- **`enemyFire(g, e, waffe, winkel, schaden, reichweite?)`** – ein Gegner feuert eine Waffe aus `WEAPONS`. Den Schaden liefert der Aufrufer (mit `scaledDamage` skaliert). Tempo ×`ENEMY_SPEED_FACTOR` (0,45) bei gleicher Reichweite, Flächenschaden-Radius ×`ENEMY_BLAST_FACTOR` (0,5), Höhe `'high'`. Für Sprenggeschosse die Entfernung zum Ziel als `reichweite` mitgeben. Strahlenwaffen (Schwerlaser) erzeugen einen Strahl in `g.beams`, der sich mindestens 0,8 s ankündigt und dann auf jeder Höhe trifft.
+- **`enemyShot(g, x, y, vx, vy, schaden)`** – einfaches gegnerisches Geschoss ohne Waffe dahinter. Geschützdrohne, Boss-Fächer und Geschütz nutzen es.
+- **`fireProjectiles(g, waffe, optionen)`** – die gemeinsame Grundlage; die Figur feuert darüber.
+- **Darstellung:** Projektile von Gegnern und reflektierte bekommen in `drawBullet` einen Ring in der Farbe ihrer Höhe. Die Form richtet sich wie bei der Figur nach `look` der Waffe.
+- **Nicht Teil von P1:** eigene Abklingzeiten, Schadenswerte und Abstände je Waffe für Gegner sowie ein eigenes Geräusch für gegnerische Schüsse. Das gehört zu Aufgabe 07.
 
 ## Vorgemerkt – noch keine Aufgabe
 
@@ -92,6 +102,7 @@ umsetzen, bis es eine eigene Aufgaben-Datei gibt.
 - **Sprache:** Kommentare, Bezeichnungen im Spiel und Commit-Texte auf Deutsch, wie im Bestand.
 - **Bilder und Töne:** Die Sprite-Dateien unter `public/assets/` sind nicht im Repository (siehe `public/assets/LIESMICH.txt`). Alles muss auch ohne sie laufen; neue Darstellungen deshalb per Code zeichnen oder einen gezeichneten Ersatz vorsehen. Neue Töne bekommen einen per Code erzeugten Platzhalter und einen Namen für `public/sounds/sounds.json`.
 - **Zum Testen im Browser:** `?raum=6`, `?charakter=cyborg` und `?punkte=20000` an die Adresse hängen.
+- **Testmodus:** `?test` an der Adresse schaltet eine eigene Raumfolge ein (`testMode` und `testPlan` in `src/sim/game.ts`): Raum 1–3 der Boss in seinen drei Stufen, Raum 4–8 je Raum ein Gegnertyp mehr, danach die normale Folge. Wer einen neuen Gegnertyp oder eine neue Stufe baut, hängt ihn dort an, damit er sich einzeln ansehen lässt.
 - **Nicht anfassen**, was die Aufgabe nicht nennt. Fällt unterwegs etwas auf, das geändert werden sollte, am Ende unter „Aufgefallen" in die Aufgaben-Datei schreiben statt es mitzuändern.
 - **Offene Fragen** in der Aufgabe sind mit einer Vorgabe versehen. Nach der Vorgabe bauen; die Frage bleibt stehen, bis sie entschieden ist.
 - **Am Ende:** `KONZEPT.md` an den Stellen nachziehen, die die Aufgabe ändert.

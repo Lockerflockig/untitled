@@ -1,11 +1,12 @@
 // Die Figur: Zielen, Laufen, Springen/Ducken/Slide, Dash, Waffen, Kick.
 
 import { STEP, ARENA } from './types.ts';
-import type { Enemy, Game, Input } from './types.ts';
+import type { Game, Input } from './types.ts';
 import {
-  BARREL_R, ENEMIES, JUMP_TIME, MINE_R, PLAYER_R, PYLON_R, TURRET_R, clampTo, damageEnemy, damagePylon, explode, rand,
+  BARREL_R, ENEMIES, JUMP_TIME, MINE_R, PLAYER_R, PYLON_R, TURRET_R, clampTo, damageEnemy, damagePylon,
 } from './core.ts';
 import { WEAPONS } from './meta.ts';
+import { SHIELD_BLOCK, fireProjectiles } from './projectiles.ts';
 
 const BACKPEDAL = 0.85; // Anteil des Höchsttempos beim Laufen entgegen der Blickrichtung
 const ACCEL = 1800; // px/s², solange eine Richtung gehalten wird (auch beim Wenden)
@@ -23,9 +24,6 @@ export const KICK_REACH = 55; // ab Rand der Figur
 export const KICK_ARC = 0.96; // halber Öffnungswinkel in rad (55°)
 const KICK_DAMAGE = 5;
 
-export const BULLET_R = 4;
-const SHIELD_BLOCK = Math.cos(1.2); // Schilddrohne blockt Schüsse aus ±70° von vorn
-const GRENADE_PLAYER_DAMAGE = 0; // die eigene Granate verletzt die Figur nicht
 
 /**
  * Laufen: Die Geschwindigkeit nähert sich der gewünschten mit begrenzter Rate an.
@@ -207,30 +205,19 @@ export function stepPlayer(g: Game, input: Input) {
     const spread = w.spread * s.spread * (g.ducking ? w.duckSpread : 1) * (still ? s.stillSpread : 1);
     const action = w.multi ? ++g.actionId : 0;
     const base = Math.atan2(g.aimY, g.aimX);
-    for (let i = 0; i < w.pellets; i++) {
-      const angle = base + (Math.random() * 2 - 1) * spread;
-      const speed = w.speed * (w.pellets > 1 ? rand(0.85, 1) : 1);
-      g.bullets.push({
-        x: g.x + g.aimX * (PLAYER_R + 6),
-        y: g.y + g.aimY * (PLAYER_R + 6),
-        vx: Math.cos(angle) * speed,
-        vy: Math.sin(angle) * speed,
-        damage: w.damage * s.weaponDamage[id] * (g.ducking ? w.duckDamage ?? 1 : 1),
-        // Sprenggeschosse landen dort, wo das Fadenkreuz steht (höchstens in voller Reichweite)
-        life: w.blast > 0 ? Math.min(w.life, Math.max(0.05, (aimLen - PLAYER_R - 6) / speed)) : w.life,
-        maxLife: w.life,
-        blast: w.blast,
-        action,
-        look: w.look ?? 'bullet',
-        hitR: w.hitR ?? 0,
-        pierce: w.pierce ?? false,
-        hit: [],
-        // Querschläger gilt für alles außer Flammen und Sprenggeschossen
-        bounces: (w.bounces ?? 0) + (w.blast > 0 || w.look === 'flame' ? 0 : s.bounces),
-        push: w.push ?? 0,
-        chain: w.chain ?? 0,
-      });
-    }
+    fireProjectiles(g, w, {
+      side: 'player',
+      x: g.x + g.aimX * (PLAYER_R + 6),
+      y: g.y + g.aimY * (PLAYER_R + 6),
+      angle: base,
+      damage: w.damage * s.weaponDamage[id] * (g.ducking ? w.duckDamage ?? 1 : 1),
+      spread,
+      height: 'full',
+      action,
+      // Sprenggeschosse landen dort, wo das Fadenkreuz steht
+      reach: aimLen - PLAYER_R - 6,
+      extraBounces: s.bounces,
+    });
   }
 
   // Kick: schleudert alle Gegner im Bogen vor der Figur in Zielrichtung weg.
@@ -277,7 +264,7 @@ function lengthToWall(g: Game) {
  * trifft er ein paar Schritte lang alles auf der Linie – jeden Gegner einmal.
  * Eine Schilddrohne von vorn hält ihn auf.
  */
-function stepPlayerBeam(g: Game) {
+export function stepPlayerBeam(g: Game) {
   const pb = g.playerBeam;
   if (!pb) return;
   const pylon = g.pylon;
@@ -338,115 +325,6 @@ function stepPlayerBeam(g: Game) {
 
   pb.fire -= STEP;
   if (pb.fire <= 0) g.playerBeam = null;
-}
-
-const CHAIN_RANGE = 170;
-const CHAIN_FALLOFF = 0.7; // jeder Sprung macht so viel vom vorigen Schaden
-
-/** Kettenblitz: springt vom getroffenen Gegner zum jeweils nächsten in Reichweite. */
-function chainFrom(g: Game, from: Enemy, damage: number, jumps: number, action: number) {
-  const struck = [from];
-  let last = from;
-  for (let i = 0; i < jumps; i++) {
-    let next: Enemy | null = null;
-    let best = CHAIN_RANGE;
-    for (const e of g.enemies) {
-      const dist = Math.hypot(e.x - last.x, e.y - last.y);
-      if (!e.dead && e.hp > 0 && !struck.includes(e) && dist < best) {
-        best = dist;
-        next = e;
-      }
-    }
-    if (!next) return;
-    g.arcs.push({ x1: last.x, y1: last.y, x2: next.x, y2: next.y, t: 0.15 });
-    damageEnemy(next, damage, 'gun', action);
-    damage *= CHAIN_FALLOFF;
-    struck.push(next);
-    last = next;
-  }
-}
-
-export function stepBullets(g: Game) {
-  stepPlayerBeam(g);
-  g.bullets = g.bullets.filter((b) => {
-    b.x += b.vx * STEP;
-    b.y += b.vy * STEP;
-    b.life -= STEP;
-    const detonate = () => {
-      if (b.blast > 0) explode(g, b.x, b.y, b.blast, b.damage, GRENADE_PLAYER_DAMAGE, 'gun', b.action, 'grenade');
-      return false;
-    };
-    if (b.life <= 0) return detonate();
-    if (b.x < 0 || b.x > ARENA || b.y < 0 || b.y > ARENA) {
-      if (b.bounces <= 0) return detonate();
-      // Abprall: zurück in den Raum, Richtung spiegeln; danach kann es dieselben Gegner erneut treffen
-      b.bounces--;
-      if (b.x < 0 || b.x > ARENA) b.vx = -b.vx;
-      if (b.y < 0 || b.y > ARENA) b.vy = -b.vy;
-      b.x = Math.min(ARENA, Math.max(0, b.x));
-      b.y = Math.min(ARENA, Math.max(0, b.y));
-      b.hit = [];
-    }
-
-    for (const e of g.enemies) {
-      if (e.dead || e.hp <= 0 || b.hit.includes(e)) continue;
-      if (Math.hypot(e.x - b.x, e.y - b.y) >= ENEMIES[e.kind].r + BULLET_R + b.hitR) continue;
-      const speed = Math.hypot(b.vx, b.vy);
-      // Die Schilddrohne blockt, was von vorn kommt
-      const fromFront = -(b.vx / speed) * Math.cos(e.angle) - (b.vy / speed) * Math.sin(e.angle) > SHIELD_BLOCK;
-      if (e.kind === 'shield' && fromFront && !e.kicked) {
-        e.hitFlash = 0.05;
-        return detonate();
-      }
-      if (b.blast > 0) return detonate();
-      g.events.push('hit');
-      if (b.push > 0) {
-        // Impuls: schleudert wie ein Kick – Aufprall, Domino und Laser greifen danach wie gewohnt
-        damageEnemy(e, b.damage, 'kick', b.action);
-        e.pushX = ((b.vx / speed) * b.push) / ENEMIES[e.kind].mass;
-        e.pushY = ((b.vy / speed) * b.push) / ENEMIES[e.kind].mass;
-        e.kicked = true;
-      } else {
-        damageEnemy(e, b.damage, 'gun', b.action);
-        if (!e.kicked && b.look !== 'flame') {
-          e.pushX = ((b.vx / speed) * 170) / ENEMIES[e.kind].mass;
-          e.pushY = ((b.vy / speed) * 170) / ENEMIES[e.kind].mass;
-        }
-      }
-      if (b.chain > 0) chainFrom(g, e, b.damage * CHAIN_FALLOFF, b.chain, b.action);
-      if (!b.pierce) return false;
-      b.hit.push(e);
-    }
-    for (const t of g.turrets) {
-      if (Math.hypot(t.x - b.x, t.y - b.y) < TURRET_R + BULLET_R) {
-        if (b.blast > 0) return detonate();
-        t.hp -= b.damage;
-        t.hitFlash = 0.12;
-        return false;
-      }
-    }
-    // Der Sendemast fängt Geschosse ab wie ein Geschütz
-    if (g.pylon && Math.hypot(g.pylon.x - b.x, g.pylon.y - b.y) < PYLON_R + BULLET_R) {
-      if (b.blast > 0) return detonate();
-      damagePylon(g, b.damage);
-      return false;
-    }
-    for (const m of g.mines) {
-      if (m.fuse === null && Math.hypot(m.x - b.x, m.y - b.y) < MINE_R + BULLET_R) {
-        m.fuse = 0;
-        m.action = b.action;
-        return detonate();
-      }
-    }
-    for (const barrel of g.barrels) {
-      if (barrel.fuse === null && Math.hypot(barrel.x - b.x, barrel.y - b.y) < BARREL_R + BULLET_R) {
-        barrel.fuse = 0;
-        barrel.action = b.action;
-        return detonate();
-      }
-    }
-    return true;
-  });
 }
 
 export { DASH_SPEED };

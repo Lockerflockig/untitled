@@ -9,6 +9,7 @@ import {
   BLAST_TIME, ENEMIES, PLAYER_R, TURRET_R, award, damageEnemy, explode, heightHits, hurtPlayer, levelOf, rand,
 } from './core.ts';
 import { dropFrom } from './loot.ts';
+import { enemyShot } from './projectiles.ts';
 
 // Laser
 export const LASER_WARN = 1.0; // so lange kündigt sich ein Laser an
@@ -50,8 +51,6 @@ const TURRET_COOLDOWN = 1.5;
 const TURRET_SHOT_SPEED = 300;
 const TURRET_SHOT_DAMAGE = 15;
 const TURRET_POINTS = 150;
-
-export const SHOT_R = 5;
 
 /**
  * Neuer Laser. Es gibt nur noch Laser der Höhe „voll": Springen und Ducken helfen nicht,
@@ -150,7 +149,7 @@ export function stepHazards(g: Game) {
         b.t = BEAM_FIRE;
       }
     } else {
-      if (distanceToBeam(b, g.x, g.y) < PLAYER_R + BEAM_WIDTH && heightHits('high', level)) hurtPlayer(g, BEAM_DAMAGE);
+      if (distanceToBeam(b, g.x, g.y) < PLAYER_R + BEAM_WIDTH && heightHits(b.height ?? 'high', level)) hurtPlayer(g, b.damage ?? BEAM_DAMAGE);
       for (const e of g.enemies) {
         if (e.kicked && !e.dead && e.laserCooldown <= 0 && distanceToBeam(b, e.x, e.y) < ENEMIES[e.kind].r + BEAM_WIDTH) {
           e.laserCooldown = 0.5;
@@ -242,24 +241,10 @@ export function stepHazards(g: Game) {
     t.cooldown -= STEP;
     if (t.cooldown <= 0) {
       t.cooldown = TURRET_COOLDOWN;
-      g.shots.push({
-        x: t.x + (dx / dist) * TURRET_R, y: t.y + (dy / dist) * TURRET_R,
-        vx: (dx / dist) * TURRET_SHOT_SPEED, vy: (dy / dist) * TURRET_SHOT_SPEED,
-        damage: TURRET_SHOT_DAMAGE,
-      });
+      enemyShot(g, t.x + (dx / dist) * TURRET_R, t.y + (dy / dist) * TURRET_R,
+        (dx / dist) * TURRET_SHOT_SPEED, (dy / dist) * TURRET_SHOT_SPEED, TURRET_SHOT_DAMAGE);
     }
     return true;
   });
 
-  // --- Gegnerische Geschosse (hoch) ---
-  g.shots = g.shots.filter((s) => {
-    s.x += s.vx * STEP;
-    s.y += s.vy * STEP;
-    if (s.x < 0 || s.x > ARENA || s.y < 0 || s.y > ARENA) return false;
-    if (Math.hypot(g.x - s.x, g.y - s.y) < PLAYER_R + SHOT_R && heightHits('high', level)) {
-      // I-Frames lassen das Geschoss durchfliegen, ein Treffer verbraucht es
-      return !hurtPlayer(g, s.damage);
-    }
-    return true;
-  });
 }

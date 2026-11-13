@@ -6,6 +6,7 @@ import {
   BARREL_R, BLAST_TIME, ENEMIES, PLAYER_R, PYLON_R, TURRET_R, clampTo, damageEnemy, damagePylon, enemyStats, explode,
   hurtPlayer, scaledDamage, scoreKill, spot,
 } from './core.ts';
+import { enemyShot } from './projectiles.ts';
 import { FIELD_ACTIVE, FIELD_DAMAGE, FIELD_ENEMY_DAMAGE, FIELD_RADIUS, FIELD_WARN } from './hazards.ts';
 
 export const SPAWN_WARN = 0.9; // so lange kündigt sich ein Gegner an
@@ -288,11 +289,8 @@ export function stepEnemies(g: Game) {
             moveX = moveY = 0; // steht beim Zielen still
             e.windup -= STEP;
             if (e.windup <= 0) {
-              g.shots.push({
-                x: e.x + toX * def.r, y: e.y + toY * def.r,
-                vx: toX * GUNNER_SHOT_SPEED, vy: toY * GUNNER_SHOT_SPEED,
-                damage: scaledDamage(GUNNER_SHOT_DAMAGE, e.level),
-              });
+              enemyShot(g, e.x + toX * def.r, e.y + toY * def.r, toX * GUNNER_SHOT_SPEED, toY * GUNNER_SHOT_SPEED,
+                scaledDamage(GUNNER_SHOT_DAMAGE, e.level));
               e.cooldown = GUNNER_COOLDOWN;
             }
           } else {
@@ -551,11 +549,8 @@ function bossFan(g: Game, e: Enemy) {
   const base = Math.atan2(g.y - e.y, g.x - e.x);
   for (let i = 0; i < BOSS_FAN; i++) {
     const a = base + (i - (BOSS_FAN - 1) / 2) * BOSS_FAN_STEP;
-    g.shots.push({
-      x: e.x + Math.cos(a) * r, y: e.y + Math.sin(a) * r,
-      vx: Math.cos(a) * BOSS_SHOT_SPEED, vy: Math.sin(a) * BOSS_SHOT_SPEED,
-      damage: scaledDamage(BOSS_SHOT_DAMAGE, e.level),
-    });
+    enemyShot(g, e.x + Math.cos(a) * r, e.y + Math.sin(a) * r, Math.cos(a) * BOSS_SHOT_SPEED, Math.sin(a) * BOSS_SHOT_SPEED,
+      scaledDamage(BOSS_SHOT_DAMAGE, e.level));
   }
 }
 

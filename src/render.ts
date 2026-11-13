@@ -7,12 +7,13 @@ import type { BlastKind, Bullet, Enemy, Game, Height } from './sim/types.ts';
 import {
   BANANA_R, BARREL_R, BLAST_TIME, ENEMIES, MINE_R, PLAYER_R as BASE_R, PYLON_R, TURRET_R, jumpHeight,
 } from './sim/core.ts';
-import { BULLET_R, KICK_ARC, KICK_REACH } from './sim/player.ts';
+import { KICK_ARC, KICK_REACH } from './sim/player.ts';
+import { BULLET_R, SHOT_R } from './sim/projectiles.ts';
 import {
   BOMB_FUSE, BOMB_RADIUS, BOSS_CALLOUT, BOSS_WINDUP, CHARGE_LOAD, GUNNER_WINDUP, MELEE, PYLON_TIME, RETREAT_ARC,
   RETREAT_JUMP_TIME, RETREAT_RANGE, RETREAT_SHOW, SPAWN_WARN, bossTint,
 } from './sim/enemies.ts';
-import { BEAM_LOCK, FIELD_WARN, LASER_WARN, SHOT_R, TURRET_HP } from './sim/hazards.ts';
+import { BEAM_LOCK, FIELD_WARN, LASER_WARN, TURRET_HP } from './sim/hazards.ts';
 import { ENTRY_X, EXIT_HALF, EXIT_Y, RUN_OUT_TIME, SLIDE_TIME } from './sim/game.ts';
 import { drawEnemySprite, drawExplosionSprite, enemySpriteReady } from './sprites.ts';
 import { drawPlayerSprite, muzzlePoint, spritesReady } from './playerSprite.ts';
@@ -361,13 +362,6 @@ function drawHazards(ctx: Ctx, g: Game, time: number) {
     ctx.fillStyle = HEIGHT_COLOR.high;
     ctx.fill();
   }
-
-  // Gegnerische Geschosse (hoch)
-  ctx.fillStyle = HEIGHT_COLOR.high;
-  for (const s of g.shots) {
-    circle(ctx, s.x, s.y, SHOT_R);
-    ctx.fill();
-  }
 }
 
 /**
@@ -712,7 +706,20 @@ function drawBullet(ctx: Ctx, b: Bullet, x: number, y: number, time: number) {
   const speed = Math.hypot(b.vx, b.vy) || 1;
   const dx = b.vx / speed;
   const dy = b.vy / speed;
+  // Feindliche und reflektierte Projektile sind der Figur gefährlich – ein Ring in der Farbe
+  // ihrer Höhe zeigt das an (blau = hoch, lässt sich unterducken; magenta = trifft immer).
+  if (b.side === 'enemy' || b.reflected) {
+    circle(ctx, x, y, SHOT_R + 3 + b.hitR);
+    ctx.strokeStyle = HEIGHT_COLOR[b.height];
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  }
   switch (b.look) {
+    case 'shot': // einfaches Geschoss eines Gegners
+      circle(ctx, x, y, SHOT_R);
+      ctx.fillStyle = HEIGHT_COLOR[b.height];
+      ctx.fill();
+      break;
     case 'grenade':
       circle(ctx, x, y, 7);
       ctx.fillStyle = '#ff9f43';
@@ -867,6 +874,11 @@ function drawScene(ctx: Ctx, g: Game, alpha: number, time: number) {
     ? [muzzle[0] - (playerX + g.aimX * (BASE_R + 6)), muzzle[1] - (playerY + g.aimY * (BASE_R + 6))]
     : [0, 0];
   for (const b of g.bullets) {
+    // Projektile von Gegnern kommen vom Gegner, nicht von der Waffe der Figur
+    if (b.side === 'enemy') {
+      drawBullet(ctx, b, b.x, b.y, time);
+      continue;
+    }
     let start = bulletStart.get(b);
     if (!start) {
       start = { x: shotOffset[0], y: shotOffset[1], life: b.life };

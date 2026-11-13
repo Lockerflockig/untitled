@@ -3,7 +3,8 @@
 import { ARENA, STEP } from './types.ts';
 import type { Game, Input, ObjectiveType, RoomPlan, Stats, EnemyKind } from './types.ts';
 import { BANANA_R, BLAST_TIME, ENEMIES, PLAYER_R, award, explode, rand, spot } from './core.ts';
-import { stepBullets, stepPlayer } from './player.ts';
+import { stepPlayer, stepPlayerBeam } from './player.ts';
+import { stepBullets } from './projectiles.ts';
 import { BOSS_FIRST, makeEnemy, stepEnemies, stepSpawns } from './enemies.ts';
 import { TURRET_HP, stepHazards } from './hazards.ts';
 import { rollOffers, stepPickups } from './loot.ts';
@@ -39,11 +40,50 @@ const MAX_ENEMIES = { base: 5, perLevel: 1, cap: 14 }; // gleichzeitig im Raum: 
 const SPAWN_EVERY = { start: 2.4, perLevel: 0.15, min: 0.9 }; // s zwischen zwei neuen Gegnern: sinkt mit dem Level
 const BOSS_ROOM = { maxEnemies: 3, spawnEvery: 4 }; // im Boss-Raum kommen nur wenige Begleiter
 
+// --- Testmodus ---------------------------------------------------------------------
+// Zum Ausprobieren, nicht für das eigentliche Spiel (im Browser: ?test an der
+// Adresse). Die Raumfolge zeigt alles nacheinander:
+//   Raum 1–3   der Boss in seinen drei Stufen (als Boss aus Level 5, 10 und 15)
+//   Raum 4–8   je Raum ein Gegnertyp mehr, der neue kommt am häufigsten
+//   danach     die normale Raumfolge
+// Die Räume 4–8 haben „Säubern" mit kleinem Ziel und außer Lasern keine Gefahren,
+// damit man die Gegner in Ruhe ansehen kann.
+
+export const testMode = { on: false };
+const TEST_BOSS_ROOMS = 3;
+const TEST_CLEAR_GOAL = 6;
+
+/** Level des Bosses in einem Raum: im Testmodus stehen die drei Stufen in Raum 1–3. */
+export const bossLevelIn = (room: number) => (testMode.on && room <= TEST_BOSS_ROOMS ? room * BOSS_EVERY : room);
+
+function testPlan(n: number): RoomPlan | null {
+  const quiet = { beamEvery: null, fieldEvery: null, mines: 0, turrets: 0, multiplier: 1 + 0.25 * (n - 1) };
+  const lasers = { laserEvery: [3.5, 5.5] as [number, number], maxLasers: 2 };
+  if (n <= TEST_BOSS_ROOMS) {
+    return {
+      objective: 'boss', goal: 1, mix: [['hunter', 1]],
+      maxEnemies: BOSS_ROOM.maxEnemies, spawnEvery: BOSS_ROOM.spawnEvery,
+      ...lasers, ...quiet, barrels: 2,
+    };
+  }
+  const kinds = n - TEST_BOSS_ROOMS;
+  if (kinds > SPAWN_MIX.length) return null;
+  return {
+    objective: 'clear', goal: TEST_CLEAR_GOAL,
+    // der Typ, der in diesem Raum neu ist, wird dreimal so oft gewürfelt wie die übrigen
+    mix: SPAWN_MIX.slice(0, kinds).map((m, i): [EnemyKind, number] => [m.kind, i === kinds - 1 ? 6 : 2]),
+    maxEnemies: 5, spawnEvery: 1.6,
+    ...lasers, ...quiet, barrels: 0,
+  };
+}
+
 /**
  * Was ein Raum enthält. Neue Gegner und Gefahren kommen einzeln dazu; ab Raum 8
  * wechseln die Aufgaben reihum und alles wird dichter.
  */
 export function roomPlan(n: number): RoomPlan {
+  const test = testMode.on ? testPlan(n) : null;
+  if (test) return test;
   const intro: ObjectiveType[] = ['collect', 'clear', 'collect', 'survive', 'boss', 'destroy', 'clear', 'collect'];
   const cycle: ObjectiveType[] = ['clear', 'survive', 'destroy', 'collect'];
   // Jeder fünfte Raum ist ein Boss-Raum
@@ -102,7 +142,6 @@ function clearRoom(g: Game) {
   g.barrels = [];
   g.turrets = [];
   g.pylon = null; // Mast und Schwarm verschwinden mit dem Raum
-  g.shots = [];
   g.bananas = [];
 }
 
@@ -133,7 +172,7 @@ function enterRoom(g: Game, n: number) {
   }
   if (g.plan.objective === 'boss') {
     // Der Boss skaliert wie alle über sein Level (die Raumnummer): Level 5 hat 900 Trefferpunkte
-    const boss = makeEnemy('boss', ARENA - 160, ARENA / 2, n);
+    const boss = makeEnemy('boss', ARENA - 160, ARENA / 2, bossLevelIn(n));
     boss.boss!.t = BOSS_FIRST;
     g.enemies.push(boss);
   }
@@ -156,7 +195,7 @@ export function newGame(stats: Stats, startRoom = 1): Game {
     weapon: 0, weaponCooldown: stats.weapons.map(() => 0),
     bullets: [], playerBeam: null, enemies: [], spawns: [], spawnTimer: 0,
     lasers: [], laserTimer: 0, beams: [], beamTimer: 0, fields: [], fieldTimer: 0,
-    mines: [], barrels: [], turrets: [], pylon: null, shots: [], blasts: [], marks: [], bananas: [],
+    mines: [], barrels: [], turrets: [], pylon: null, blasts: [], marks: [], bananas: [],
     score: 0, streak: 0, streakTimer: 0, actionId: 0, comboAction: 0, comboKills: 0,
     popups: [], kills: 0, roomKills: 0, time: 0, over: false, events: [],
   };
@@ -205,6 +244,7 @@ export function step(g: Game, input: Input) {
   stepPickups(g);
 
   if (g.phase === 'exit') {
+    stepPlayerBeam(g);
     stepBullets(g);
     // Durch den Ausgang in der rechten Wand geht es in den nächsten Raum
     if (g.x >= ARENA - PLAYER_R - 1 && Math.abs(g.y - EXIT_Y) < EXIT_HALF) {
@@ -223,6 +263,7 @@ export function step(g: Game, input: Input) {
   }
 
   stepSpawns(g);
+  stepPlayerBeam(g);
   stepBullets(g);
   stepHazards(g);
   stepEnemies(g);
