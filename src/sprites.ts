@@ -4,7 +4,7 @@
 
 import type { BlastKind, Enemy, EnemyKind, Game } from './sim/types.ts';
 import { ENEMIES } from './sim/core.ts';
-import { BOMB_FUSE, BOMB_RADIUS, BOSS_WINDUP, GUNNER_WINDUP, MELEE } from './sim/enemies.ts';
+import { BOMB_FUSE, BOMB_RADIUS, GUNNER_WINDUP, MELEE, bossTint } from './sim/enemies.ts';
 
 type Ctx = CanvasRenderingContext2D;
 interface Clip { file: string; frames: number; fps: number }
@@ -98,6 +98,25 @@ export const enemySpriteReady = (kind: EnemyKind) => {
   return [s.idle, s.move, s.hurt, s.dead, s.attack].every((c) => !c || loaded(enemyImage(kind, c)));
 };
 
+const tintCanvas = document.createElement('canvas');
+const TINT_ALPHA = 0.35; // so stark liegt die Stufenfarbe über dem Bild – die Zeichnung bleibt erkennbar
+
+/** Ein Einzelbild, leicht in der Farbe color getönt (nur wo das Bild nicht durchsichtig ist). */
+function tinted(img: HTMLImageElement, sx: number, size: number, color: string) {
+  tintCanvas.width = tintCanvas.height = size;
+  const c = tintCanvas.getContext('2d')!;
+  c.imageSmoothingEnabled = false;
+  c.clearRect(0, 0, size, size);
+  c.globalCompositeOperation = 'source-over';
+  c.globalAlpha = 1;
+  c.drawImage(img, sx, 0, size, size, 0, 0, size, size);
+  c.globalCompositeOperation = 'source-atop';
+  c.globalAlpha = TINT_ALPHA;
+  c.fillStyle = color;
+  c.fillRect(0, 0, size, size);
+  return tintCanvas;
+}
+
 export function drawEnemySprite(ctx: Ctx, g: Game, e: Enemy, time: number) {
   const def = ENEMIES[e.kind];
   const s = ENEMY_SPRITES[e.kind];
@@ -106,8 +125,10 @@ export function drawEnemySprite(ctx: Ctx, g: Game, e: Enemy, time: number) {
   const flying = e.kicked || e.dead;
   const fusing = e.fuse !== null && !e.dead;
   // Schaut zur Figur; die Schilddrohne dorthin, wohin ihr Schild zeigt, ein Nahkämpfer beim Angriff dorthin, wohin er schlägt
+  const bossAim = e.boss && (e.boss.phase.startsWith('charge') || e.boss.phase === 'retreat-show');
   const facing = e.melee
     ? (Math.cos(e.melee.angle) >= 0 ? 1 : -1)
+    : bossAim ? (Math.cos(e.boss!.angle) >= 0 ? 1 : -1)
     : e.kind === 'shield' ? (Math.cos(e.angle) >= 0 ? 1 : -1) : g.x >= e.x ? 1 : -1;
 
   let clip = s.idle;
@@ -115,11 +136,12 @@ export function drawEnemySprite(ctx: Ctx, g: Game, e: Enemy, time: number) {
   if (e.dead) {
     clip = s.dead;
     frame = 1;
-  } else if (e.kind === 'boss' && e.windup > 0) {
-    clip = s.idle; // steht still und kündigt den Angriff an
   } else if (flying || (e.hitFlash > 0 && e.kind !== 'boss')) {
     clip = s.hurt;
     frame = Math.min(s.hurt.frames - 1, 1);
+  } else if (e.boss) {
+    // Der Panzer steht; er fährt nur beim Charge und springt beim Rückzug
+    clip = e.boss.phase === 'charge-rush' || e.boss.phase === 'retreat-jump' ? s.move : s.idle;
   } else if (s.attack && e.windup > 0) {
     clip = s.attack;
     frame = Math.min(s.attack.frames - 1, Math.floor((1 - e.windup / GUNNER_WINDUP) * s.attack.frames));
@@ -164,7 +186,12 @@ export function drawEnemySprite(ctx: Ctx, g: Game, e: Enemy, time: number) {
     ctx.translate(0, half);
   }
   ctx.scale(facing * s.scale, s.scale);
-  ctx.drawImage(enemyImage(e.kind, clip), frame * s.size, 0, s.size, s.size, -s.originX, -s.size + 1, s.size, s.size);
+  if (e.kind === 'boss') {
+    // Der Panzer ist seiner Stufe nach leicht getönt
+    ctx.drawImage(tinted(enemyImage(e.kind, clip), frame * s.size, s.size, bossTint(e.level)), -s.originX, -s.size + 1);
+  } else {
+    ctx.drawImage(enemyImage(e.kind, clip), frame * s.size, 0, s.size, s.size, -s.originX, -s.size + 1, s.size, s.size);
+  }
   ctx.restore();
   if (e.dead) return;
 
@@ -174,14 +201,6 @@ export function drawEnemySprite(ctx: Ctx, g: Game, e: Enemy, time: number) {
     ctx.arc(e.x, e.y, def.r + 14 * (e.windup / GUNNER_WINDUP), 0, Math.PI * 2);
     ctx.strokeStyle = '#4da3ff';
     ctx.lineWidth = 2;
-    ctx.stroke();
-  }
-  if (e.kind === 'boss' && e.windup > 0) {
-    // Ankündigung: Farbe verrät den Angriff – blau = hohe Geschosse, orange = Bodenfelder
-    ctx.beginPath();
-    ctx.arc(e.x, e.y, def.r + 30 * (e.windup / BOSS_WINDUP), 0, Math.PI * 2);
-    ctx.strokeStyle = e.mode % 2 === 0 ? '#4da3ff' : '#ffb347';
-    ctx.lineWidth = 4;
     ctx.stroke();
   }
   if (e.kind === 'shield' && !e.kicked) {

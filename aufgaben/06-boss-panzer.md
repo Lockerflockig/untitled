@@ -1,6 +1,6 @@
 # 06 – Boss: Panzer mit neuem Moveset
 
-Status: offen · baut auf 01 und 03 auf (Warnton)
+Status: erledigt · baut auf 01 und 03 auf (Warnton)
 
 ## Ziel
 
@@ -89,8 +89,35 @@ Die bestehenden Boss-Prüfungen beschreiben das alte Verhalten und werden ersetz
 
 ## Aufgefallen
 
-(vom umsetzenden Agenten auszufüllen)
+- **Regelnummern doppelt:** „Einfärbung je Stufe" und „Charge – Aufladen" tragen beide die Nummer 6. Beide sind umgesetzt.
+- **Benommen plus Pause:** Nach dem Aufprall ist er 1 s benommen (Regel 9) und macht *danach* noch die übliche Pause von 1,5 s – zusammen 2,5 s ohne Fähigkeit. Die Aufgabe lässt offen, ob die Benommenheit die Pause ersetzt; so gebaut, ist der Charge das Fenster zum Zurückschlagen. Umstellen: in `stepBoss` (Phase `stunned`) `rest(s)` durch `rest(s, 0)` ersetzen.
+- **Mast nach dem Schwarm:** Der Mast verschwindet, sobald er den Schwarm gerufen hat (er ruft nur einmal). Regel 15 („solange ein Mast steht oder ein Schwarm noch lebt") deckt beide Fälle ab.
+- **Mast gibt keine Punkte**, wenn er zerstört wird (anders als ein Geschütz mit 150). Die Aufgabe nennt keine; leicht nachzutragen in `stepPylon`.
+- **Andere Gegner schieben den Panzer:** Das gegenseitige Auseinanderschieben der Gegner in `stepEnemies` achtet nicht auf die Masse. Ein Schwarm, der sich um den Panzer drängt, schiebt ihn deshalb ein paar Pixel; Explosionen und Treffer geben ihm (durch seine Masse kleinen) Rückstoß. Das ist keine eigene Bewegung und wie bei allen Gegnern; die Prüfung „bewegt sich nicht" sieht von diesen Schritten ab.
+- **Charge und Kick:** Ein sehr starker Kick (über 1800 Kickkraft, z. B. Biker mit Upgrades) lässt den Panzer kurz als „gekickt" gelten; währenddessen ruht seine Fähigkeit (Zeit läuft nicht weiter). Wie bisher.
+- **Überfahrene Gegner fliegen wie gekickt** (`kicked = true`, Schwung 1200 / Masse quer zur Bahn). Damit greifen Wand-Aufprall, Domino, Laser und der Sprengkick der Figur – eine Kombination im Sinne der Leitlinie, aber der Schaden daraus zählt mit dem Art-Multiplikator „Umgebung".
+- **Kegel trifft unabhängig von der Höhe** (Springen und Ducken helfen nicht, nur I-Frames und Schonzeit), weil die Aufgabe keine Höhe nennt.
+- **Schwarm in Level 10:** Mit 15 Gegnern (aus allen Typen bis Level 10, inklusive Sprengdrohnen) wird es sehr voll. Das ist nach Vorgabe; fürs Balancing nur als Hinweis.
+- Das Feld `Enemy.mode` (zählte die Boss-Angriffe) ist entfallen; seine Aufgabe übernimmt `BossState.turn`. `Enemy.windup` und `Enemy.cooldown` nutzt der Panzer nicht mehr.
+- Docker war in dieser Umgebung nicht erreichbar (kein Daemon); statt `docker compose up -d --build` lief dessen Build-Schritt `npm run build` (Typprüfung und Vite-Build) durch.
 
 ## Übergabe an den Planer
 
-(vom umsetzenden Agenten auszufüllen: umgesetzte und bewusst ausgelassene Regeln; neue Felder, Funktionen und Konstanten mit Datei; geänderte Prüfungen; was im Browser angesehen wurde)
+**Umgesetzt:** alle Regeln 1–20 einschließlich Darstellung; die drei offenen Fragen nach ihrer Vorgabe (Jagddrohnen bleiben als Begleiter, nach Level 15 derselbe Panzer weiter skaliert, Kegel trifft keine Gegner). Bewusst nichts ausgelassen.
+
+**Neue Felder, Funktionen, Konstanten:**
+- `src/sim/types.ts`: `BossAbility` (`charge` · `backup` · `retreat` · `fan` · `fields`), `BossState` (Phase, Zeit, laufende und letzte Fähigkeit, `turn`, Winkel, gemerkte Stelle, Sprungstart/-ziel, Getroffene des Charge, `callout`/`calloutT`), `Pylon`. Am Gegner: `boss: BossState | null`, `swarm: boolean`. Am Spiel: `pylon: Pylon | null`. Ankündigungen in `g.spawns` haben optional `swarm`. `AlarmKind` um `'pylon'` erweitert. `PlayerBeam.hit` kann auch den Mast enthalten.
+- `src/sim/enemies.ts`:
+  - Konstanten: `BOSS_DRIVE` (0 = fährt nicht; 1 = früheres langsames Fahren in den Pausen), `BOSS_FIRST` (2,5 s), `BOSS_PAUSE` (1,5 s), `BOSS_WINDUP` (0,7 s), `BOSS_CALLOUT`, `BOSS_TINTS`; Charge: `CHARGE_LOAD` (1,2), `CHARGE_LOCK` (0,3), `CHARGE_SPEED` (900), `CHARGE_DAMAGE` (35), `CHARGE_FLING` (700), `CHARGE_ENEMY_FLING` (1200), `CHARGE_STUN` (1); Call Backup: `PYLON_SHARE` (0,35), `PYLON_TIME` (5), `SWARM_BASE` (15), `SWARM_PER_BOSS` (5), `SWARM_INSET`; Rückzug: `RETREAT_SHOW` (0,5), `RETREAT_ARC` (35°), `RETREAT_RANGE` (350), `RETREAT_DAMAGE` (25), `RETREAT_JUMP` (400), `RETREAT_JUMP_TIME` (0,35), `RETREAT_NEAR` (250).
+  - Funktionen: `bossTier(level)`, `bossTint(level)`, `bossAbilities(level)` (Reihenfolge = Wechsel), `swarmSize(level)`, `startAbility(g, e, ability)` (erzwingt eine Fähigkeit – auch für Prüfungen), `inRetreatCone(e, angle, x, y)`; intern `stepBoss`, `nextAbility`, `chargeRush`, `bossFan`, `bossFields`, `callSwarm`, `stepPylon`.
+  - `alarmsOf` meldet `pylon`, solange ein Mast steht (Dringlichkeit steigt bis zum Schwarm).
+  - `stepSpawns`: Schwarm-Gegner und -Ankündigungen zählen nicht gegen `maxEnemies`.
+- `src/sim/core.ts`: `PYLON_R` (22), `damagePylon(g, amount)`; `explode` trifft den Mast.
+- `src/sim/player.ts`: Geschosse, Strahl und Dash treffen den Mast (Geschosse bleiben an ihm hängen wie an einem Geschütz). In `src/sim/enemies.ts` trifft ihn ein gekickter Gegner wie ein Geschütz.
+- `src/sim/game.ts`: `clearRoom` räumt den Mast weg; die Anfangspause des Panzers ist `BOSS_FIRST`.
+- `src/audio.ts`: Platzhalter-Ton `pylon` (tiefer, fallender Ton, höher mit der Dringlichkeit). `public/sounds/LIESMICH.txt` nennt den Namen.
+- `src/render.ts`: `drawBossGround` (Charge-Bahn, Kegel), `drawBossOverlay` (Ankündigungsring für Fächer/Felder, Ladeleiste, Name der Fähigkeit), Sendemast in `drawHazards`; Ersatzkreis in Stufenfarbe. `src/sprites.ts`: `tinted` tönt das Panzer-Sprite (35 % Stufenfarbe, nur auf nicht durchsichtigen Pixeln); Fahr-Animation nur bei Charge und Sprung.
+
+**Geänderte Prüfungen:** Wie vorgegeben ersetzt: „Boss: steht im Raum, greift an, lässt sich nicht wegkicken" (prüfte das Zurollen) → „rollt nicht mehr auf die Figur zu und lässt sich nicht wegkicken". Die Prüfung zum Schaden von Boss-Geschossen und -Bodenfeldern bleibt inhaltlich gleich, erzwingt den Angriff jetzt aber über `startAbility` statt über das entfallene Feld `mode`. „Boss besiegt" nutzt den neuen Helfer `bossRoom` (ohne Begleiter und Gefahren), sonst unverändert. Neu (Abschnitt „Boss: Panzer"): Fähigkeiten je Level 5/10/15, kein Wiederholen, kein Call Backup bei stehendem Mast oder lebendem Schwarm, Stillstand zwischen den Fähigkeiten, Stufenfarben; Charge (kein Schaden beim Laden, Treffer in der Bahn, nicht daneben, Bahn folgt bis zum Einrasten, Dash schützt, Gegner in der Bahn, 1 s benommen, Level 15 > Level 5); Call Backup (Mast in der Mitte mit 35 %, Piepton, ≥ 15 Gegner nach 5 s rundum am Rand mit Level-Werten, nicht gegen die Obergrenze, 15/20/25 je Boss-Level, zerstört durch Schuss oder Dash → kein Schwarm); Rückzug (0,5 s ohne Schaden, Kegel trifft, außerhalb nicht, Sprung weg bis Wand bzw. höchstens 400 px, bevorzugt unter 250 px, Level 15 > Level 5); Panzer zerstört → Aufgabe erfüllt trotz Mast und Schwarm.
+
+**Im Browser angesehen (Chromium, eigens gebaute Szenen über den echten Renderer, ohne Konsolenfehler):** Charge-Bahn beim Laden mit Ladeleiste und „Chaaaarge!!!" (Level 5), Sendemast mit Ring, Lebensleiste und Sekunden (Level 10), Kegel des Rückzugs mit „Taktischer Rückzug!!!" (Level 15), Ankündigungsringe des Schwarms rundum am Rand. Einmal mit dem Ersatzkreis (Stufenfarben grünlich, lila, rot) und einmal mit vorübergehend selbst gezeichneten Platzhalter-Sprites, um die Tönung zu sehen (wieder gelöscht). **Nicht** gesehen: das echte Panzer-Sprite (fehlt im Repository), der Ablauf in Bewegung im laufenden Spiel; **nicht** gehört: der Ton des Masts (kein Audiogerät).

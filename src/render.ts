@@ -5,10 +5,13 @@
 import { ARENA } from './sim/types.ts';
 import type { BlastKind, Bullet, Enemy, Game, Height } from './sim/types.ts';
 import {
-  BANANA_R, BARREL_R, BLAST_TIME, ENEMIES, MINE_R, PLAYER_R as BASE_R, TURRET_R, jumpHeight,
+  BANANA_R, BARREL_R, BLAST_TIME, ENEMIES, MINE_R, PLAYER_R as BASE_R, PYLON_R, TURRET_R, jumpHeight,
 } from './sim/core.ts';
 import { BULLET_R, KICK_ARC, KICK_REACH } from './sim/player.ts';
-import { BOMB_FUSE, BOMB_RADIUS, GUNNER_WINDUP, MELEE, SPAWN_WARN } from './sim/enemies.ts';
+import {
+  BOMB_FUSE, BOMB_RADIUS, BOSS_CALLOUT, BOSS_WINDUP, CHARGE_LOAD, GUNNER_WINDUP, MELEE, PYLON_TIME, RETREAT_ARC,
+  RETREAT_JUMP_TIME, RETREAT_RANGE, RETREAT_SHOW, SPAWN_WARN, bossTint,
+} from './sim/enemies.ts';
 import { BEAM_LOCK, FIELD_WARN, LASER_WARN, SHOT_R, TURRET_HP } from './sim/hazards.ts';
 import { ENTRY_X, EXIT_HALF, EXIT_Y, RUN_OUT_TIME, SLIDE_TIME } from './sim/game.ts';
 import { drawEnemySprite, drawExplosionSprite, enemySpriteReady } from './sprites.ts';
@@ -291,6 +294,47 @@ function drawHazards(ctx: Ctx, g: Game, time: number) {
     }
   }
 
+  // Sendemast des Panzers: Mast mit pulsierendem Ring, Lebensleiste, Sekunden bis zum Schwarm
+  if (g.pylon) {
+    const p = g.pylon;
+    const urgency = 1 - p.t / PYLON_TIME;
+    const pulse = (time * (1.5 + 3 * urgency)) % 1;
+    circle(ctx, p.x, p.y, PYLON_R + 6 + pulse * 40);
+    ctx.strokeStyle = `rgba(255, 79, 216, ${0.8 * (1 - pulse)})`;
+    ctx.lineWidth = 3;
+    ctx.stroke();
+    circle(ctx, p.x, p.y, PYLON_R);
+    ctx.fillStyle = p.hitFlash > 0 ? '#ffffff' : '#3b3f52';
+    ctx.fill();
+    ctx.strokeStyle = '#ff4fd8';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    // Mast mit Querstreben und blinkender Spitze
+    ctx.strokeStyle = '#c9cfdf';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(p.x, p.y);
+    ctx.lineTo(p.x, p.y - 46);
+    ctx.moveTo(p.x - 10, p.y - 18);
+    ctx.lineTo(p.x + 10, p.y - 18);
+    ctx.moveTo(p.x - 7, p.y - 32);
+    ctx.lineTo(p.x + 7, p.y - 32);
+    ctx.stroke();
+    circle(ctx, p.x, p.y - 48, 5);
+    ctx.fillStyle = Math.floor(time * (3 + 8 * urgency)) % 2 ? '#ffffff' : '#ff4fd8';
+    ctx.fill();
+    const w = 56;
+    ctx.fillStyle = '#3a1820';
+    ctx.fillRect(p.x - w / 2, p.y - 64, w, 5);
+    ctx.fillStyle = '#ff5d73';
+    ctx.fillRect(p.x - w / 2, p.y - 64, w * Math.max(0, p.hp / p.maxHp), 5);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '700 16px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(`${Math.ceil(p.t)} s`, p.x, p.y - 78);
+  }
+
   // Zielstrahl (hoch)
   for (const b of g.beams) {
     ctx.save();
@@ -349,8 +393,105 @@ function drawMeleeArc(ctx: Ctx, e: Enemy) {
   ctx.stroke();
 }
 
+/** Länge eines Strahls von (x, y) in Richtung angle bis zur Wand. */
+function rayToWall(x: number, y: number, angle: number) {
+  const dx = Math.cos(angle);
+  const dy = Math.sin(angle);
+  const tx = dx > 0 ? (ARENA - x) / dx : dx < 0 ? -x / dx : Infinity;
+  const ty = dy > 0 ? (ARENA - y) / dy : dy < 0 ? -y / dy : Infinity;
+  return Math.min(tx, ty);
+}
+
+/** Was der Panzer am Boden anzeigt: Charge-Bahn (magenta) und Kegel des Rückzugs. */
+function drawBossGround(ctx: Ctx, e: Enemy) {
+  const s = e.boss;
+  if (!s || e.dead) return;
+  const r = ENEMIES.boss.r;
+  if (s.phase === 'charge-load' || s.phase === 'charge-rush') {
+    // Bahn in seiner Breite bis zur Wand; wird kräftiger, rastet sichtbar ein
+    const locked = s.phase === 'charge-rush' || s.t <= 0.3;
+    const progress = s.phase === 'charge-rush' ? 1 : 1 - s.t / CHARGE_LOAD;
+    const length = rayToWall(e.x, e.y, s.angle);
+    ctx.save();
+    ctx.translate(e.x, e.y);
+    ctx.rotate(s.angle);
+    ctx.fillStyle = `rgba(255, 79, 216, ${0.1 + 0.3 * progress})`;
+    ctx.fillRect(0, -r, length, 2 * r);
+    ctx.strokeStyle = HEIGHT_COLOR.full;
+    ctx.lineWidth = locked ? 3 : 1.5;
+    ctx.setLineDash(locked ? [] : [10, 8]);
+    ctx.strokeRect(0, -r, length, 2 * r);
+    ctx.setLineDash([]);
+    ctx.restore();
+  }
+  const shot = s.phase === 'retreat-jump' && s.t > RETREAT_JUMP_TIME - 0.15;
+  if (s.phase === 'retreat-show' || shot) {
+    // Kegel füllt sich in 0,5 s, beim Schuss blitzt er auf
+    const ox = shot ? s.jumpX : e.x;
+    const oy = shot ? s.jumpY : e.y;
+    const progress = shot ? 1 : 1 - s.t / RETREAT_SHOW;
+    ctx.beginPath();
+    ctx.moveTo(ox, oy);
+    ctx.arc(ox, oy, RETREAT_RANGE, s.angle - RETREAT_ARC, s.angle + RETREAT_ARC);
+    ctx.closePath();
+    ctx.fillStyle = 'rgba(255, 93, 115, 0.1)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255, 93, 115, 0.8)';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(ox, oy);
+    ctx.arc(ox, oy, RETREAT_RANGE * progress, s.angle - RETREAT_ARC, s.angle + RETREAT_ARC);
+    ctx.closePath();
+    ctx.fillStyle = shot ? 'rgba(255, 255, 255, 0.6)' : 'rgba(255, 93, 115, 0.35)';
+    ctx.fill();
+  }
+}
+
+/** Über dem Panzer: Ankündigung von Fächer und Bodenfeldern, Ladeleiste des Charge, Name der Fähigkeit. */
+function drawBossOverlay(ctx: Ctx, e: Enemy) {
+  const s = e.boss;
+  if (!s || e.dead) return;
+  const r = ENEMIES.boss.r;
+  if (s.phase === 'windup') {
+    // Farbe verrät den Angriff – blau = hohe Geschosse, orange = Bodenfelder
+    circle(ctx, e.x, e.y, r + 30 * (s.t / BOSS_WINDUP));
+    ctx.strokeStyle = s.ability === 'fan' ? HEIGHT_COLOR.high : HEIGHT_COLOR.low;
+    ctx.lineWidth = 4;
+    ctx.stroke();
+  }
+  const top = e.y - r - 76; // über Sprite und Lebensleiste
+  if (s.phase === 'charge-load') {
+    const w = 80;
+    ctx.fillStyle = '#2a1030';
+    ctx.fillRect(e.x - w / 2, top, w, 6);
+    ctx.fillStyle = HEIGHT_COLOR.full;
+    ctx.fillRect(e.x - w / 2, top, w * Math.min(1, 1 - s.t / CHARGE_LOAD), 6);
+  }
+  if (s.calloutT > 0) {
+    ctx.save();
+    ctx.globalAlpha = Math.min(1, (s.calloutT / BOSS_CALLOUT) * 3);
+    ctx.font = '800 22px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.lineWidth = 4;
+    ctx.strokeStyle = '#10131a';
+    ctx.strokeText(s.callout, e.x, top - 18);
+    ctx.fillStyle = bossTint(e.level);
+    ctx.fillText(s.callout, e.x, top - 18);
+    ctx.restore();
+  }
+}
+
 function drawEnemy(ctx: Ctx, g: Game, e: Enemy, time: number) {
+  drawBossGround(ctx, e); // liegt am Boden, unter dem Panzer
+  drawEnemyBody(ctx, g, e, time);
+  drawBossOverlay(ctx, e);
+}
+
+function drawEnemyBody(ctx: Ctx, g: Game, e: Enemy, time: number) {
   const def = ENEMIES[e.kind];
+  const color = e.kind === 'boss' ? bossTint(e.level) : ENEMY_COLOR[e.kind]; // der Panzer in der Farbe seiner Stufe
   drawMeleeArc(ctx, e); // liegt am Boden, unter der Figur der Drohne
   if (enemySpriteReady(e.kind)) {
     drawEnemySprite(ctx, g, e, time);
@@ -364,7 +505,7 @@ function drawEnemy(ctx: Ctx, g: Game, e: Enemy, time: number) {
     circle(ctx, e.x, e.y, def.r);
     ctx.fillStyle = '#4a4f5e';
     ctx.fill();
-    ctx.strokeStyle = ENEMY_COLOR[e.kind];
+    ctx.strokeStyle = color;
     ctx.lineWidth = 2;
     ctx.setLineDash([4, 4]);
     ctx.stroke();
@@ -384,7 +525,7 @@ function drawEnemy(ctx: Ctx, g: Game, e: Enemy, time: number) {
     ctx.stroke();
   }
   circle(ctx, e.x, e.y, def.r);
-  ctx.fillStyle = e.hitFlash > 0 || (fusing && Math.floor(time * 16) % 2) ? '#ffffff' : ENEMY_COLOR[e.kind];
+  ctx.fillStyle = e.hitFlash > 0 || (fusing && Math.floor(time * 16) % 2) ? '#ffffff' : color;
   ctx.globalAlpha = e.kicked ? 0.7 : 1;
   ctx.fill();
   ctx.globalAlpha = 1;
@@ -422,7 +563,7 @@ function drawEnemy(ctx: Ctx, g: Game, e: Enemy, time: number) {
   if (e.hp < e.maxHp) {
     ctx.fillStyle = '#3a1820';
     ctx.fillRect(e.x - def.r, e.y - def.r - 9, def.r * 2, 4);
-    ctx.fillStyle = ENEMY_COLOR[e.kind];
+    ctx.fillStyle = color;
     ctx.fillRect(e.x - def.r, e.y - def.r - 9, def.r * 2 * Math.max(0, e.hp / e.maxHp), 4);
   }
 }

@@ -28,7 +28,7 @@ export type ObjectiveType = 'collect' | 'clear' | 'survive' | 'destroy' | 'boss'
 export type BlastKind = 'grenade' | 'barrel' | 'mine' | 'bomb' | 'shield' | 'turret' | 'wreck' | 'revive';
 
 /** Töne, die als Schleife laufen, solange ihre Bedingung gilt. Der Name ist der Eintrag in sounds.json. */
-export type AlarmKind = 'beep';
+export type AlarmKind = 'beep' | 'pylon';
 
 /** Ein Dauerton, der gerade laufen soll. Die Logik meldet ihn, die Oberfläche spielt ihn. */
 export interface Alarm {
@@ -97,6 +97,33 @@ export interface Melee {
   angle: number; // Richtung des Schlags, zu Beginn des Ausholens festgelegt
 }
 
+/** Was der Panzer einsetzen kann. Fächer und Bodenfelder reihen sich wie eine Fähigkeit ein. */
+export type BossAbility = 'charge' | 'backup' | 'retreat' | 'fan' | 'fields';
+
+/**
+ * Zustand des Panzers. Er wechselt zwischen Pause (rest) und genau einer laufenden Fähigkeit.
+ * Phasen: rest · windup (Fächer/Bodenfelder angekündigt) · charge-load · charge-rush · stunned
+ * · retreat-show · retreat-jump. Call Backup hat keine eigene Phase: Der Mast wird sofort gesetzt.
+ */
+export interface BossState {
+  phase: 'rest' | 'windup' | 'charge-load' | 'charge-rush' | 'stunned' | 'retreat-show' | 'retreat-jump';
+  t: number; // verbleibende Zeit der Phase
+  ability: BossAbility | null; // laufende Fähigkeit
+  last: BossAbility | null; // zuletzt eingesetzte; kommt nicht zweimal hintereinander
+  turn: number; // Zeiger im Wechsel der Fähigkeiten, zählt mit jedem Einsatz weiter
+  angle: number; // Richtung von Charge-Bahn und Rückzugs-Kegel
+  fromX: number; // Rückzug: Stelle der Figur beim Auslösen
+  fromY: number;
+  jumpX: number; // Rückzug: Start und Ziel des Sprungs
+  jumpY: number;
+  toX: number;
+  toY: number;
+  hit: Enemy[]; // vom laufenden Charge schon überfahren (Figur über playerHit)
+  playerHit: boolean;
+  callout: string; // Name der Fähigkeit über dem Panzer
+  calloutT: number; // so lange ist er noch zu sehen
+}
+
 export interface Enemy {
   kind: EnemyKind;
   level: number; // Level (Raumnummer), in dem er erschienen ist; bestimmt die Werte seiner Angriffe
@@ -106,7 +133,6 @@ export interface Enemy {
   maxHp: number;
   speed: number; // px/s, beim Erscheinen festgelegt
   damage: number; // bei Berührung, beim Erscheinen festgelegt
-  mode: number; // Boss: zählt die Angriffe durch, um sie abzuwechseln
   pushX: number; // Rückstoß, klingt ab
   pushY: number;
   kicked: boolean; // fliegt gerade nach einem Kick oder Aufprall
@@ -123,6 +149,8 @@ export interface Enemy {
   melee: Melee | null; // Nahkampf-Angriff, solange er läuft (Jagddrohne)
   fuse: number | null; // Sprengdrohne: Zeit bis zur Detonation
   angle: number; // Blickrichtung (Schilddrohne)
+  boss: BossState | null; // nur beim Panzer
+  swarm: boolean; // gehört zum Schwarm eines Sendemasts; zählt nicht gegen maxEnemies
 }
 
 /** Geschoss der Figur. */
@@ -158,7 +186,7 @@ export interface PlayerBeam {
   damage: number;
   action: number;
   length: number; // reicht bis zur Wand oder bis zum ersten Schild von vorn
-  hit: (Enemy | Turret)[]; // schon getroffen – jeder höchstens einmal je Strahl
+  hit: (Enemy | Turret | Pylon)[]; // schon getroffen – jeder höchstens einmal je Strahl
 }
 
 /** Geschoss eines Gegners oder Geschützes; fliegt auf Höhe "hoch". */
@@ -225,6 +253,18 @@ export interface Turret {
   y: number;
   hp: number;
   cooldown: number;
+  hitFlash: number;
+  dashHit: boolean;
+}
+
+/** Sendemast des Panzers (Call Backup): steht fest, greift nicht an, ruft nach Ablauf einen Schwarm. */
+export interface Pylon {
+  x: number;
+  y: number;
+  hp: number;
+  maxHp: number;
+  t: number; // verbleibende Zeit bis zum Schwarm
+  level: number; // Level des Panzers, der ihn gerufen hat
   hitFlash: number;
   dashHit: boolean;
 }
@@ -317,7 +357,7 @@ export interface Game {
   bullets: Bullet[];
   playerBeam: PlayerBeam | null;
   enemies: Enemy[];
-  spawns: { x: number; y: number; t: number; kind: EnemyKind }[];
+  spawns: { x: number; y: number; t: number; kind: EnemyKind; swarm?: boolean }[];
   spawnTimer: number;
   lasers: Laser[];
   laserTimer: number;
@@ -328,6 +368,7 @@ export interface Game {
   mines: Mine[];
   barrels: Barrel[];
   turrets: Turret[];
+  pylon: Pylon | null; // Sendemast des Panzers, höchstens einer
   shots: Shot[];
   blasts: { x: number; y: number; r: number; t: number; kind: BlastKind }[];
   marks: Mark[]; // Spuren am Boden; bleiben bis zum Wechsel in den nächsten Raum

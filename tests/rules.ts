@@ -2,9 +2,12 @@
 // (Node ab 22.6, läuft die TypeScript-Dateien direkt.)
 
 import { STEP } from '../src/sim/types.ts';
-import type { EnemyKind, Game, Input, Laser, Stats } from '../src/sim/types.ts';
+import type { BossAbility, Enemy, EnemyKind, Field, Game, Input, Laser, Stats } from '../src/sim/types.ts';
 import { newGame, roomPlan, step } from '../src/sim/game.ts';
-import { BOMB_SPEED, SHIELD_BLAST_RADIUS, SHIELD_TURN, alarmsOf, makeEnemy } from '../src/sim/enemies.ts';
+import {
+  BOMB_SPEED, CHARGE_LOAD, CHARGE_LOCK, PYLON_TIME, RETREAT_SHOW, SHIELD_BLAST_RADIUS, SHIELD_TURN, SPAWN_WARN, alarmsOf,
+  bossTint, makeEnemy, startAbility,
+} from '../src/sim/enemies.ts';
 import { ALARM_INTERVAL, AlarmLoops } from '../src/alarmLoop.ts';
 import { spawnLaser } from '../src/sim/hazards.ts';
 import { ENEMIES, enemyStats } from '../src/sim/core.ts';
@@ -46,6 +49,15 @@ const add = (g: Game, kind: EnemyKind, dx: number, dy = 0) => {
   g.enemies.push(e);
   return e;
 };
+/** Boss-Raum ohne Zufall von außen: keine Begleiter, Laser, Fässer, Minen oder Geschütze. */
+function bossRoom(room: number): Game {
+  const g = newGame(baseStats(), room);
+  g.laserTimer = g.spawnTimer = 1e9;
+  g.barrels = [];
+  g.mines = [];
+  g.turrets = [];
+  return g;
+}
 const laser = (height: Laser['height'], pos: number): Laser => ({ vertical: true, pos, speed: 0, height, warn: 0, life: 1e9 });
 
 console.log('--- Laser-Höhen ---');
@@ -326,28 +338,266 @@ console.log('--- Skalierung mit dem Level ---');
     { five: boss(5).maxHp, ten: boss(10).maxHp });
   check('Boss: Tempo und Berührungsschaden wachsen mit, Tempo bleibt unter 80 px/s',
     boss(5).speed === 59 && boss(10).damage === 51 && enemyStats('boss', 100).speed === 80, { speed: boss(5).speed, damage: boss(10).damage });
-  const firstShot = (room: number) => {
-    const g = newGame(baseStats(), room);
-    g.barrels = [];
-    g.turrets = []; // ab Raum 8 steht im Boss-Raum ein Geschütz, dessen Schüsse nicht zählen sollen
-    g.laserTimer = g.spawnTimer = 1e9;
-    for (let i = 0; i < 600 && g.shots.length === 0; i++) step(g, idle(g));
-    return g.shots[0]?.damage;
+  // Fächer und Bodenfelder gibt es weiter; ihr Schaden skaliert mit dem Level des Bosses
+  const first = (room: number, ability: 'fan' | 'fields') => {
+    const g = bossRoom(room);
+    const b = g.enemies.find((e) => e.kind === 'boss')!;
+    startAbility(g, b, ability);
+    for (let i = 0; i < 600 && g.shots.length + g.fields.length === 0; i++) step(g, idle(g));
+    return ability === 'fan' ? g.shots[0]?.damage : g.fields[0];
   };
-  const firstField = (room: number) => {
-    const g = newGame(baseStats(), room);
-    g.barrels = [];
-    g.turrets = []; // ab Raum 8 steht im Boss-Raum ein Geschütz, dessen Schüsse nicht zählen sollen
-    g.laserTimer = g.spawnTimer = 1e9;
-    g.enemies.find((e) => e.kind === 'boss')!.mode = 1; // beginnt mit den Bodenfeldern
-    for (let i = 0; i < 600 && g.fields.length === 0; i++) step(g, idle(g));
-    return g.fields[0];
-  };
-  const [shot5, shot10] = [firstShot(5), firstShot(10)];
-  const [field5, field10] = [firstField(5), firstField(10)];
+  const [shot5, shot10] = [first(5, 'fan'), first(10, 'fan')];
+  const [field5, field10] = [first(5, 'fields') as Field, first(10, 'fields') as Field];
   check('Boss-Geschosse und Boss-Bodenfelder merken sich ihren Schaden mit dem Level des Bosses (Geschoss 19 → 25, Feld 25 → 34)',
     shot5 === 19 && shot10 === 25 && field5?.damage === 25 && field10?.damage === 34 && field10?.enemyDamage === 51,
     { shot5, shot10, field5, field10 });
+}
+
+console.log('--- Boss: Panzer ---');
+{
+  /** Raum mit Panzer im gegebenen Level, ohne Begleiter und Gefahren. Figur in der Mitte (400, 400). */
+  const panzer = (level: number, x = 100, y = 400, stats = baseStats()) => {
+    const g = quiet(stats, level);
+    const b = makeEnemy('boss', x, y, level);
+    g.enemies.push(b);
+    return { g, b };
+  };
+  const place = (g: Game, x: number, y: number) => {
+    g.x = g.prevX = x;
+    g.y = g.prevY = y;
+    g.vx = g.vy = 0;
+  };
+
+  // Welche Fähigkeiten er in 60 s einsetzt (Figur unverwundbar gestellt, damit sie überlebt)
+  const used = (level: number) => {
+    const { g, b } = panzer(level, 640, 400, baseStats({ damageTaken: 0 }));
+    const seq: BossAbility[] = [];
+    let backupWhileBlocked = false;
+    let moved = 0;
+    for (let i = 0; i < Math.round(60 / STEP); i++) {
+      const s = b.boss!;
+      const [phase, t, x, y] = [s.phase, s.t, b.x, b.y];
+      const pushed = Math.hypot(b.pushX, b.pushY) > 1e-3; // Rückstoß von außen (Explosion, Treffer) zählt nicht
+      const blocked = g.pylon !== null || g.enemies.some((e) => e.swarm && !e.dead) || g.spawns.some((sp) => sp.swarm);
+      step(g, idle(g));
+      g.hp = 100;
+      const started = phase === 'rest' && (s.phase !== 'rest' || s.t > t);
+      if (started) {
+        seq.push(s.last!);
+        if (s.last === 'backup' && blocked) backupWhileBlocked = true;
+      }
+      // zwischen den Fähigkeiten (Pause, Ankündigung, Aufladen, benommen) steht er still
+      const still = ['rest', 'windup', 'charge-load', 'stunned', 'retreat-show'];
+      // Andere Gegner, die sich mit ihm überlappen, schieben ihn (für alle Gegner gleich) – das zählt hier nicht
+      const crowded = g.enemies.some((e) => e !== b && Math.hypot(e.x - b.x, e.y - b.y) < ENEMIES.boss.r + ENEMIES[e.kind].r + 20);
+      if (!started && !crowded && !pushed && still.includes(phase) && still.includes(s.phase) && !b.kicked) moved = Math.max(moved, Math.hypot(b.x - x, b.y - y));
+    }
+    return { seq, set: [...new Set(seq)].sort().join(), backupWhileBlocked, moved };
+  };
+  const [u5, u10, u15] = [used(5), used(10), used(15)];
+  check('Level 5: neben Fächer und Bodenfeldern nur der Charge', u5.set === 'charge,fan,fields', u5.set);
+  check('Level 10: dazu Call Backup', u10.set === 'backup,charge,fan,fields', u10.set);
+  check('Level 15: alle drei Fähigkeiten, dazu Fächer und Bodenfelder', u15.set === 'backup,charge,fan,fields,retreat', u15.set);
+  check('Dieselbe Fähigkeit kommt nie zweimal hintereinander',
+    [u5, u10, u15].every((u) => u.seq.every((a, i) => i === 0 || a !== u.seq[i - 1])), [u5.seq, u10.seq, u15.seq]);
+  check('Kein Call Backup, solange ein Mast steht oder ein Schwarm lebt', !u10.backupWhileBlocked && !u15.backupWhileBlocked);
+  check('Zwischen den Fähigkeiten bewegt er sich nicht (höchstens ein Tausendstel Pixel Nachlauf eines Rückstoßes)', u5.moved < 1e-3 && u10.moved < 1e-3 && u15.moved < 1e-3,
+    [u5.moved, u10.moved, u15.moved]);
+
+  check('Stufenfarbe: Level 5, 10 und 15 verschieden, Level 20 wie Level 15',
+    new Set([bossTint(5), bossTint(10), bossTint(15)]).size === 3 && bossTint(20) === bossTint(15) && bossTint(9) === bossTint(5),
+    [5, 10, 15, 20].map(bossTint));
+
+  {
+    const g = bossRoom(5);
+    const b = g.enemies.find((e) => e.kind === 'boss')!;
+    const start = b.x;
+    run(g, 2); // Pause zu Beginn: 2,5 s
+    step(g, idle(g, { kick: true, aimX: b.x, aimY: b.y }));
+    b.x = g.x + 60; // in Kick-Reichweite stellen
+    b.y = g.y;
+    const before = b.x;
+    step(g, idle(g, { kick: true, aimX: b.x, aimY: b.y }));
+    run(g, 0.3);
+    check('Er rollt nicht mehr auf die Figur zu und lässt sich nicht wegkicken',
+      start === 640 && Math.abs(b.x - before) < 20, { moved: b.x - before });
+  }
+
+  // --- Charge ---
+  const charge = (level: number, during: (g: Game, b: Enemy, t: number) => Partial<Input> | void = () => {}) => {
+    const { g, b } = panzer(level);
+    startAbility(g, b, 'charge');
+    let hpLoaded = 100;
+    let t = 0;
+    let impact = -1;
+    while (t < 3 && b.boss!.phase !== 'stunned') {
+      step(g, idle(g, during(g, b, t) ?? {}));
+      t += STEP;
+      if (t < CHARGE_LOAD - STEP / 2) hpLoaded = g.hp;
+    }
+    if (b.boss!.phase === 'stunned') impact = t;
+    return { g, b, hpLoaded, impact };
+  };
+  {
+    const { g, b, hpLoaded } = charge(5);
+    check('Charge: Während des Aufladens kein Schaden, danach trifft er die Figur in der Bahn (44 in Level 5)',
+      hpLoaded === 100 && g.hp === 56, { hpLoaded, hp: g.hp });
+    check('Charge: fährt bis zur Wand und bleibt dort stehen', Math.abs(b.x - (800 - ENEMIES.boss.r)) < 1 && b.y === 400, { x: b.x, y: b.y });
+    check('Charge: Wer überfahren wird, fliegt quer zur Bahn beiseite', Math.abs(g.y - 400) > 30, { y: g.y });
+    // benommen: 1 s lang keine Fähigkeit, keine Bewegung
+    const [x, y] = [b.x, b.y];
+    run(g, 0.98);
+    const still = b.boss!.phase === 'stunned' && b.x === x && b.y === y && g.shots.length === 0 && g.fields.length === 0 && g.pylon === null;
+    run(g, 0.04);
+    check('Charge: Nach dem Aufprall 1 s untätig, danach Pause', still && b.boss!.phase === 'rest', b.boss!.phase);
+  }
+  {
+    // Die Bahn rastet 0,3 s vor Schluss ein: Wer danach zur Seite geht, wird nicht getroffen
+    const { g, b } = charge(5, (g, _b, t) => {
+      if (t > CHARGE_LOAD - CHARGE_LOCK + 0.05 && g.y === 400) place(g, 400, 520);
+    });
+    check('Charge: neben der Bahn kein Schaden; die Bahn folgt nicht mehr', g.hp === 100 && b.y === 400 && b.boss!.angle === 0,
+      { hp: g.hp, by: b.y });
+  }
+  {
+    // Die Bahn folgt der Figur, solange sie nicht eingerastet ist
+    const { g, b } = charge(5, (g, _b, t) => {
+      if (t > 0.3 && t < 0.4) place(g, 400, 600);
+    });
+    check('Charge: Die Bahn folgt der Figur bis kurz vor Schluss', b.boss!.angle !== 0 && g.hp === 56, { angle: b.boss!.angle, hp: g.hp });
+  }
+  {
+    let dashed = false;
+    const { g } = charge(5, (g, b) => {
+      if (!dashed && b.boss!.phase === 'charge-rush' && g.x - b.x < 110) {
+        dashed = true;
+        return { dash: true, aimX: b.x, aimY: b.y }; // durch den heranrasenden Panzer hindurch
+      }
+    });
+    check('Charge: Ein Dash durch die Bahn schützt (I-Frames)', dashed && g.hp === 100, { hp: g.hp });
+  }
+  {
+    const { g, b } = panzer(5);
+    const hunter = add(g, 'hunter', 0, -60);
+    place(g, 400, 650);
+    startAbility(g, b, 'charge');
+    for (let i = 0; i < Math.round(CHARGE_LOAD / STEP) - 1; i++) step(g, idle(g));
+    b.boss!.angle = 0; // Bahn waagerecht durch den Gegner
+    hunter.x = 300; // mitten in der Bahn
+    hunter.y = 400;
+    run(g, 0.3);
+    check('Charge: Auch Gegner in der Bahn nehmen Schaden (als Umgebung) und fliegen beiseite',
+      hunter.hp < hunter.maxHp && hunter.lastHit === 'env' && Math.abs(hunter.pushY) > 0, { hp: hunter.hp, lastHit: hunter.lastHit });
+  }
+  const chargeLoss = (level: number) => 100 - charge(level).g.hp;
+  check('Charge: Schaden in Level 15 höher als in Level 5', chargeLoss(15) > chargeLoss(5), [chargeLoss(5), chargeLoss(15)]);
+
+  // --- Call Backup ---
+  {
+    const { g, b } = panzer(10, 640, 400);
+    place(g, 150, 150);
+    startAbility(g, b, 'backup');
+    b.boss!.t = 1e9; // danach nichts weiter
+    const p = g.pylon;
+    check('Call Backup: Mast in der Raummitte mit 35 % des maximalen Lebens', p !== null && p.x === 400 && p.y === 400
+      && p.maxHp === Math.round(b.maxHp * 0.35) && p.hp === p.maxHp, p);
+    check('Call Backup: Der Mast piept (Dauerton „pylon")', alarmsOf(g).some((a) => a.kind === 'pylon'), alarmsOf(g));
+    run(g, PYLON_TIME - 0.05);
+    const early = g.spawns.length + g.enemies.filter((e) => e.swarm).length;
+    run(g, 0.1);
+    const called = g.spawns.filter((s) => s.swarm);
+    const onEdge = called.every((s) => Math.min(s.x, s.y, 800 - s.x, 800 - s.y) < 45);
+    const sides = new Set(called.map((s) => (s.x < 45 ? 'l' : s.x > 755 ? 'r' : s.y < 45 ? 'o' : 'u'))).size;
+    check('Call Backup: Nach 5 s werden mindestens 15 Gegner angekündigt, rundum am Rand',
+      early === 0 && called.length >= 15 && onEdge && sides === 4, { early, called: called.length, sides });
+    run(g, SPAWN_WARN);
+    const swarm = g.enemies.filter((e) => e.swarm);
+    check('Call Backup: Der Schwarm erscheint mit Typen und Werten des Levels', swarm.length >= 15
+      && swarm.every((e) => e.level === 10 && g.plan.mix.some(([k]) => k === e.kind)) && !alarmsOf(g).some((a) => a.kind === 'pylon'),
+      { n: swarm.length });
+    g.spawnTimer = 0;
+    step(g, idle(g));
+    check('Call Backup: Der Schwarm zählt nicht gegen die Obergrenze des Raums', g.spawns.some((s) => !s.swarm), g.plan.maxEnemies);
+  }
+  const swarmCount = (level: number) => {
+    const { g, b } = panzer(level, 640, 400);
+    startAbility(g, b, 'backup');
+    b.boss!.t = 1e9;
+    run(g, PYLON_TIME + 0.05);
+    return g.spawns.filter((s) => s.swarm).length;
+  };
+  check('Call Backup: Schwarm wächst mit dem Level (15 in Level 10, 20 in Level 15, 25 in Level 20)',
+    swarmCount(10) === 15 && swarmCount(15) === 20 && swarmCount(20) === 25, [10, 15, 20].map(swarmCount));
+  for (const how of ['Schuss', 'Dash'] as const) {
+    const { g, b } = panzer(10, 640, 400);
+    place(g, 400, 600);
+    startAbility(g, b, 'backup');
+    b.boss!.t = 1e9;
+    g.pylon!.hp = 1;
+    if (how === 'Schuss') run(g, 0.5, () => ({ fire: true, aimX: 400, aimY: 0 }));
+    else {
+      place(g, 400, 480);
+      step(g, idle(g, { dash: true, aimX: 400, aimY: 0 }));
+      run(g, 0.3);
+    }
+    const gone = g.pylon === null;
+    run(g, PYLON_TIME + SPAWN_WARN + 0.5);
+    check(`Call Backup: Mast vorher zerstört (${how}) – kein Schwarm`, gone && g.spawns.length === 0 && g.enemies.length === 1,
+      { gone, spawns: g.spawns.length, enemies: g.enemies.length });
+  }
+  {
+    const g = bossRoom(10);
+    const b = g.enemies.find((e) => e.kind === 'boss')!;
+    startAbility(g, b, 'backup');
+    b.boss!.t = 1e9;
+    run(g, PYLON_TIME + SPAWN_WARN + 0.1);
+    startAbility(g, b, 'backup'); // ein zweiter Mast, erzwungen
+    const both = g.pylon !== null && g.enemies.filter((e) => e.swarm).length >= 15;
+    b.hp = 0;
+    step(g, idle(g));
+    check('Panzer zerstört: Aufgabe erfüllt, Mast und Schwarm verschwinden mit dem Raum',
+      both && g.phase === 'exit' && g.pylon === null && g.enemies.length === 0 && g.spawns.length === 0, { both, phase: g.phase });
+  }
+
+  // --- Taktischer Rückzug ---
+  const retreat = (level: number, dodge: boolean) => {
+    const { g, b } = panzer(level, 500, 400);
+    startAbility(g, b, 'retreat');
+    if (dodge) place(g, 500, 200); // 90° neben der Richtung des Kegels
+    run(g, RETREAT_SHOW - 0.05);
+    const before = g.hp;
+    run(g, 0.1);
+    const after = g.hp;
+    run(g, 0.5);
+    return { g, b, before, after };
+  };
+  {
+    const hit = retreat(15, false);
+    check('Rückzug: 0,5 s Ankündigung ohne Schaden, dann trifft der Kegel die Figur (57 in Level 15)',
+      hit.before === 100 && hit.after === 43, { before: hit.before, after: hit.after });
+    check('Rückzug: Danach steht er weiter von der gemerkten Stelle entfernt (Sprung bis zur Wand)',
+      Math.hypot(hit.b.x - 400, hit.b.y - 400) > 100 && Math.abs(hit.b.x - (800 - ENEMIES.boss.r)) < 1, { x: hit.b.x, y: hit.b.y });
+    const miss = retreat(15, true);
+    check('Rückzug: außerhalb des Kegels kein Schaden', miss.after === 100, { hp: miss.after });
+    const far = (() => {
+      const { g, b } = panzer(15, 250, 400);
+      place(g, 150, 400);
+      startAbility(g, b, 'retreat');
+      run(g, 1);
+      return b;
+    })();
+    check('Rückzug: Der Sprung reicht höchstens 400 px', Math.abs(far.x - 650) < 1 && far.y === 400,
+      { x: far.x });
+  }
+  check('Rückzug: Kegelschaden in Level 15 höher als in Level 5', 100 - retreat(15, false).after > 100 - retreat(5, false).after,
+    [retreat(5, false).after, retreat(15, false).after]);
+  {
+    const { g, b } = panzer(15, 500, 400);
+    b.boss!.last = 'charge';
+    b.boss!.t = 0; // Pause vorbei
+    step(g, idle(g));
+    check('Rückzug: bevorzugt, wenn die Figur näher als 250 px ist', b.boss!.ability === 'retreat', b.boss!.ability);
+  }
 }
 
 console.log('--- Schilddrohne ---');
@@ -770,16 +1020,8 @@ console.log('--- Räume ---');
     plans.map((p) => p.objective));
 }
 {
-  const g = newGame(baseStats(), 5);
-  g.barrels = [];
-  g.laserTimer = g.spawnTimer = 1e9;
+  const g = bossRoom(5);
   const boss = g.enemies.find((e) => e.kind === 'boss')!;
-  const start = boss.x;
-  step(g, idle(g, { kick: true, aimX: boss.x, aimY: boss.y }));
-  run(g, 4);
-  check('Boss: steht im Raum, greift an, lässt sich nicht wegkicken',
-    boss.maxHp === 900 && g.shots.length + g.fields.length > 0 && Math.abs(boss.x - start) < 200 && boss.x < start,
-    { hp: boss.maxHp, shots: g.shots.length, fields: g.fields.length, moved: Math.round(boss.x - start) });
   boss.hp = 1;
   boss.x = g.x + 150;
   boss.y = g.y;

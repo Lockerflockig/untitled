@@ -9,6 +9,7 @@ export const BANANA_R = 14;
 export const MINE_R = 12;
 export const BARREL_R = 16;
 export const TURRET_R = 16;
+export const PYLON_R = 22; // Sendemast des Panzers
 const SHIELD_TIME = 0.6; // Schonzeit nach einem Treffer
 
 /**
@@ -104,6 +105,16 @@ export function damageEnemy(e: Enemy, amount: number, source: Source, action = e
   e.action = action;
 }
 
+/**
+ * Schaden am Sendemast des Panzers. Er nimmt Schaden von allem, was auch Geschütze trifft
+ * (Geschosse, Strahl, Explosionen, Dash, Aufprall gekickter Gegner).
+ */
+export function damagePylon(g: Game, amount: number) {
+  if (!g.pylon) return;
+  g.pylon.hp -= amount;
+  g.pylon.hitFlash = 0.12;
+}
+
 /** Schaden an der Figur. Gibt zurück, ob er gewirkt hat (I-Frames und Schonzeit schützen). */
 export function hurtPlayer(g: Game, amount: number) {
   if (g.invuln > 0 || g.shield > 0 || g.phase !== 'play') return false;
@@ -189,4 +200,5 @@ export function explode(
       t.hitFlash = 0.12;
     }
   }
+  if (g.pylon && Math.hypot(g.pylon.x - x, g.pylon.y - y) < radius + PYLON_R) damagePylon(g, enemyDamage);
 }

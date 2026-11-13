@@ -4,7 +4,7 @@
 // eintragen, z. B. { "shoot": "pistole.wav", "explode": "boom.ogg" }. Ein
 // eingetragener Sound ersetzt den Platzhalter; alles andere bleibt, wie es ist.
 //
-// Dauertöne (Warnton der Sprengdrohne, Name "beep") laufen als Schleife, solange ihre
+// Dauertöne (Warnton der Sprengdrohne "beep", Sendemast des Panzers "pylon") laufen als Schleife, solange ihre
 // Bedingung gilt. Statt eines Dateinamens lässt sich ein Objekt eintragen, um die
 // Schleife auszuschalten: { "beep": { "datei": "piep.wav", "schleife": false } } –
 // dann ertönt der Ton nur einmal, wenn er angeht.
@@ -101,6 +101,11 @@ const ALARM_SYNTH: Record<AlarmKind, (urgency: number) => AudioScheduledSourceNo
   beep: (urgency) => {
     const f = 740 + 560 * urgency;
     return tone('square', f, f, 0.09, 0.3);
+  },
+  // Sendemast des Panzers: tieferer, fallender Ton, damit man ihn vom Warnton der Sprengdrohne unterscheidet
+  pylon: (urgency) => {
+    const f = 420 + 300 * urgency;
+    return tone('triangle', f, f * 0.7, 0.16, 0.4);
   },
 };
 
